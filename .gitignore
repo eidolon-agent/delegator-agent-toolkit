@@ -1,0 +1,16 @@
+out/
+cache/
+lib/forge-std
+lib/openzeppelin-contracts
+lib/delegation-framework
+broadcast/
+.DS_Store
+.env
+.vscode/
+.idea/
+*.log
+node_modules/
+npm-debug.log
+dist/
+coverage/
+coverage.json

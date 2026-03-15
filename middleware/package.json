@@ -1,0 +1,21 @@
+{
+  "name": "@eidolon/delegation-client",
+  "version": "0.1.0",
+  "description": "Client library for AI agents to safely execute under MetaMask-style delegations",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["ethereum", "delegation", "agent", "erc-7715", "metamask"],
+  "author": "Eidolon Agent",
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.x",
+    "chalk": "^4.1.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
