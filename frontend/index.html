@@ -11,6 +11,7 @@
   <script src="https://unpkg.com/viem@2.23.5/dist/index.umd.js"></script>
   <script src="https://unpkg.com/numeral@2.0.6/numeral.min.js"></script>
   <script src="https://cdn.tailwind.com"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     body { background: #f3f4f6; color: #1f2937; font-family: sans-serif; margin: 0; padding: 0; }
     .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
@@ -25,7 +26,7 @@
 <body>
   <div id="root"></div>
 
-  <script type="text/javascript">
+  <script type="text/babel" data-presets="react">
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
     const RPC_URL = 'https://sepolia.base.org';
 
