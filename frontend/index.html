@@ -86,16 +86,27 @@
       const log = (msg) => setLogs(l => [...l, `${new Date().toLocaleTimeString()} — ${msg}`]);
 
       const connect = async () => {
-        if (window.ethereum) {
+        if (typeof window.ethereum === 'undefined') {
+          alert('No Ethereum wallet detected. Please install MetaMask, Rabby, or another injected wallet provider and refresh the page.');
+          log('Error: window.ethereum not found');
+          return;
+        }
+        try {
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          if (accounts.length === 0) {
+            alert('Wallet connection denied. Please approve the connection in your wallet.');
+            log('Error: no accounts returned');
+            return;
+          }
           account = accounts[0];
           const chain = await window.ethereum.request({ method: 'eth_chainId' });
           chainId = parseInt(chain, 16);
           setConnected(true);
           setChainId(chainId);
           log(`Connected: ${account} on chain ${chainId}`);
-        } else {
-          alert('No Ethereum wallet found');
+        } catch (err) {
+          log(`Connection error: ${err.message || err}`);
+          alert('Failed to connect wallet. See logs.');
         }
       };
 
@@ -187,6 +198,8 @@
         log(`Tx: https://sepolia.basescan.org/tx/${txHash}`);
       };
 
+      const providerDetected = typeof window !== 'undefined' && typeof window.ethereum !== 'undefined';
+
       return (
         <div className="container">
           <h1>Delegator Agent Toolkit</h1>
@@ -194,7 +207,16 @@
 
           {!connected ? (
             <div className="card">
-              <button onClick={connect}>Connect Wallet</button>
+              {!providerDetected ? (
+                <>
+                  <div className="alert" style={{background:'#fee', color:'#900', padding:'1rem', borderRadius:'0.5rem', marginBottom:'1rem'}}>
+                    No Ethereum wallet detected. Please install MetaMask, Rabby, or another injected wallet and refresh the page.
+                  </div>
+                  <p><small>Supported: MetaMask, Rabby, Coinbase Wallet, Trust Wallet (injected mode)</small></p>
+                </>
+              ) : (
+                <button onClick={connect}>Connect Wallet</button>
+              )}
               <p><small>Uses injected provider (MetaMask, Rabby, etc.)</small></p>
             </div>
           ) : (
