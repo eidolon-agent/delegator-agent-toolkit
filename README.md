@@ -41,6 +41,22 @@ export BASE_RPC_URL=https://mainnet.base.org
 forge test --fork-url $BASE_RPC_URL
 ```
 
+### Deploy to Base Testnet
+
+1. Get testnet ETH from Base faucet.
+2. Set env:
+
+```bash
+export BASE_RPC_URL=https://sepolia.base.org
+export PRIVATE_KEY=0x...
+```
+
+3. Deploy:
+
+```bash
+forge script script/Deploy.s.sol:DeployDelegatorAgent --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify
+```
+
 ### Node Middleware
 
 ```bash
