@@ -6,14 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@wagmi/core@2.14.12/dist/index.umd.js"></script>
-  <script src="https://unpkg.com/@wagmi/connectors@2.9.1/dist/index.umd.js"></script>
-  <script src="https://unpkg.com/viem@2.23.5/dist/index.umd.js"></script>
-  <script src="https://unpkg.com/numeral@2.0.6/numeral.min.js"></script>
+  <script src="https://unpkg.com/web3@1.10.4/dist/web3.min.js"></script>
   <script src="https://cdn.tailwind.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/web3-provider.min.js"></script>
-  <script src="https://unpkg.com/web3@1.10.4/dist/web3.min.js"></script>
   <style>
     body { background: #f3f4f6; color: #1f2937; font-family: sans-serif; margin: 0; padding: 0; }
     .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
@@ -73,7 +68,6 @@
     const { useState } = React;
     let web3 = null;
     let account = null;
-    let currentProvider = null;
 
     function App() {
       const [connected, setConnected] = useState(false);
@@ -87,58 +81,28 @@
 
       const log = (msg) => setLogs(l => [...l, `${new Date().toLocaleTimeString()} — ${msg}`]);
 
-      const initWeb3 = (provider) => {
-        web3 = new Web3(provider);
-        currentProvider = provider;
-      };
-
-      const connectInjected = async () => {
+      const connect = async () => {
         if (typeof window.ethereum === 'undefined') {
-          alert('No injected wallet found. Please install MetaMask, Rabby, or another injected wallet.');
-          log('Error: window.ethereum not found');
+          alert('No Ethereum wallet found. Install MetaMask and refresh.');
           return;
         }
         try {
-          initWeb3(window.ethereum);
+          web3 = new Web3(window.ethereum);
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-          if (accounts.length === 0) {
-            alert('Wallet connection denied.');
-            log('Error: no accounts returned');
-            return;
-          }
+          if (accounts.length === 0) throw new Error('No accounts');
           account = accounts[0];
-          const chain = await window.ethereum.request({ method: 'eth_chainId' });
-          chainId = parseInt(chain, 16);
+          const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
+          chainId = parseInt(chainHex, 16);
           setConnected(true);
           setChainId(chainId);
-          log(`Connected: ${account} on chain ${chainId}`);
+          log(`Connected: ${account} (chain ${chainId})`);
         } catch (err) {
-          log(`Connection error: ${err.message || err}`);
-          alert('Failed to connect. See logs.');
-        }
-      };
-
-      const connectWalletConnect = async () => {
-        try {
-          const provider = new WalletConnectProvider.Web3Provider({
-            rpc: { 84532: 'https://sepolia.base.org' }
-          });
-          initWeb3(provider);
-          await provider.enable();
-          const signer = provider.getSigner();
-          account = await signer.getAddress();
-          const chain = await signer.getChainId();
-          setConnected(true);
-          setChainId(parseInt(chain));
-          log(`WalletConnect: ${account} on chain ${chain}`);
-        } catch (err) {
-          log(`WalletConnect error: ${err.message || err}`);
-          alert('WalletConnect failed. Try injected wallet.');
+          log(`Connect error: ${err.message || err}`);
+          alert('Failed to connect. Is MetaMask unlocked?');
         }
       };
 
       const switchToBase = async () => {
-        if (!window.ethereum) return;
         try {
           await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
@@ -158,101 +122,68 @@
             }]
           });
           setChainId(84532);
+          log('Added and switched to Base Sepolia');
         }
       };
 
-      const sendTx = async (funcName, args, label, setPendingFn) => {
-        if (!web3 || !account) {
-          alert('Not connected');
-          return;
-        }
-        setPendingFn(true);
+      const sendTx = async (funcName, args, label, setter) => {
+        if (!web3 || !account) { alert('Not connected'); return; }
+        setter(true);
         try {
           const contract = new web3.eth.Contract(contractABI, CONTRACT_ADDRESS);
-          const encoded = contract.methods[funcName](...args).encodeABI();
-          const txParams = {
-            from: account,
-            to: CONTRACT_ADDRESS,
-            data: encoded,
-            value: '0x0'
-          };
-          // Estimate gas (may fail; then use default)
-          try {
-            const gas = await web3.eth.estimateGas(txParams);
-            txParams.gas = gas;
-          } catch (e) {
-            txParams.gas = '0x493e0'; // 300000
-          }
-          const txHash = await web3.eth.sendTransaction(txParams);
-          log(`${label} tx sent: ${txHash}`);
-          const receipt = await web3.eth.getTransactionReceipt(txHash);
-          if (receipt && receipt.logs) {
-            // Decode events simply
-            receipt.logs.forEach(l => {
-              const topics = l.topics || [];
-              if (topics.length > 0) {
-                const topic0 = topics[0];
-                if (topic0.startsWith('0x') && topic0.length === 66) {
-                  // Known event signatures
-                  const sig = topic0.substring(0,10);
-                  if (sig === '0x5857df49') log('Event: DelegationCreated');
-                  else if (sig === '0x5857df4a') log('Event: DelegationRevoked');
-                  else log(`Event: ${topic0}`);
-                }
+          const data = contract.methods[funcName](...args).encodeABI();
+          const tx = { from: account, to: CONTRACT_ADDRESS, data, value: '0x0' };
+          try { tx.gas = await web3.eth.estimateGas(tx); } catch (e) { tx.gas = '0x493e0'; }
+          const hash = await web3.eth.sendTransaction(tx);
+          log(`${label} tx: ${hash}`);
+          const receipt = await web3.eth.getTransactionReceipt(hash);
+          if (receipt) {
+            log(`${label} status: ${receipt.status ? 'success' : 'fail'}`);
+            receipt.logs && receipt.logs.forEach(l => {
+              const t = l.topics && l.topics[0];
+              if (t) {
+                if (t.startsWith('0x5857df49')) log('→ DelegationCreated');
+                else if (t.startsWith('0x5857df4a')) log('→ DelegationRevoked');
+                else log(`→ Event: ${t.substring(0,10)}...`);
               }
             });
-            log(`${label} receipt status: ${receipt.status ? 'success' : 'fail'}`);
-          } else {
-            log(`${label} completed (no logs)`);
           }
         } catch (err) {
-          log(`Error: ${err.message || err}`);
+          log(`Tx error: ${err.message || err}`);
           alert(`Transaction failed: ${err.message || err}`);
         } finally {
-          setPendingFn(false);
+          setter(false);
         }
       };
 
-      const providerDetected = typeof window !== 'undefined' && typeof window.ethereum !== 'undefined';
-
-      // Build handlers
       const handleCreateRoot = () => {
-        if (!form.delegate || !form.max) {
-          alert('Delegate address and Max Value required');
-          return;
-        }
-        const targets = form.targets ? form.targets.split(',').map(s => s.trim()).filter(s => s) : [];
-        const selectors = form.selectors ? form.selectors.split(',').map(s => s.trim()).filter(s => s) : [];
+        if (!form.delegate || !form.max) return alert('Delegate address and Max Value required');
+        const targets = form.targets.split(',').map(s => s.trim()).filter(Boolean);
+        const selectors = form.selectors.split(',').map(s => s.trim()).filter(Boolean);
         const ttl = BigInt(parseInt(form.ttl, 10));
-        const intent = form.intent ? web3.utils.sha3(form.intent) : '0x'.padEnd(66, '0');
-        const delegate = form.delegate;
-        const maxVal = web3.utils.toWei(form.max, 'ether');
-        sendTx('createDelegation', [delegate, targets, selectors, maxVal, ttl, intent], 'CreateRoot', () => setPending(p => ({...p, create: false})));
+        const intent = form.intent ? web3.utils.soliditySha3({ type: 'string', value: form.intent }) : '0x'.padEnd(66, '0');
+        const maxWei = web3.utils.toWei(form.max, 'ether');
+        sendTx('createDelegation', [form.delegate, targets, selectors, maxWei, ttl, intent], 'CreateRoot', () => setPending(p => ({...p, create: false})));
       };
 
       const handleCreateSub = () => {
-        if (!form.parentId || !form.subDelegate || !form.max) {
-          alert('Parent ID, Sub-delegate address, and Max Value required');
-          return;
-        }
+        if (!form.parentId || !form.subDelegate || !form.max) return alert('Parent ID, Sub-delegate address, and Max Value required');
         const parentId = BigInt(parseInt(form.parentId, 10));
-        const subDelegate = form.subDelegate;
-        const targets = form.targets ? form.targets.split(',').map(s => s.trim()).filter(s => s) : [];
-        const selectors = form.selectors ? form.selectors.split(',').map(s => s.trim()).filter(s => s) : [];
-        const maxVal = web3.utils.toWei(form.max, 'ether');
+        const targets = form.targets.split(',').map(s => s.trim()).filter(Boolean);
+        const selectors = form.selectors.split(',').map(s => s.trim()).filter(Boolean);
+        const maxWei = web3.utils.toWei(form.max, 'ether');
         const ttl = BigInt(parseInt(form.ttl, 10));
-        const intent = form.intent ? web3.utils.sha3(form.intent) : '0x'.padEnd(66, '0');
-        sendTx('createSubDelegation', [parentId, subDelegate, targets, selectors, maxVal, ttl, intent], 'CreateSub', () => setPending(p => ({...p, sub: false})));
+        const intent = form.intent ? web3.utils.soliditySha3({ type: 'string', value: form.intent }) : '0x'.padEnd(66, '0');
+        sendTx('createSubDelegation', [parentId, form.subDelegate, targets, selectors, maxWei, ttl, intent], 'CreateSub', () => setPending(p => ({...p, sub: false})));
       };
 
       const handleRevoke = () => {
-        if (!form.revokeId) {
-          alert('Delegation ID required');
-          return;
-        }
+        if (!form.revokeId) return alert('Delegation ID required');
         const delegationId = BigInt(parseInt(form.revokeId, 10));
         sendTx('revoke', [delegationId], 'Revoke', () => setPending(p => ({...p, revoke: false})));
       };
+
+      const providerDetected = typeof window !== 'undefined' && typeof window.ethereum !== 'undefined';
 
       return (
         <div className="container">
@@ -262,17 +193,18 @@
           {!connected ? (
             <div className="card">
               {providerDetected ? (
-                <button onClick={connectInjected}>Connect Wallet (Injected)</button>
+                <button onClick={connect}>Connect Wallet</button>
               ) : (
-                <button onClick={connectWalletConnect}>Connect with WalletConnect (QR)</button>
+                <div className="alert" style={{background:'#fee', color:'#900', padding:'1rem', borderRadius:'0.5rem'}}>
+                  No Ethereum wallet detected. Install MetaMask and refresh.
+                </div>
               )}
-              <p><small>Supported: MetaMask, Rabby, Coinbase Wallet, Trust Wallet (injected) or any wallet via WalletConnect QR.</small></p>
             </div>
           ) : (
             <>
               {chainId !== 84532 && (
                 <div className="alert">
-                  You are not on Base Sepolia. <button onClick={switchToBase}>Switch to Base Sepolia</button>
+                  Not on Base Sepolia. <button onClick={switchToBase}>Switch now</button>
                 </div>
               )}
 
@@ -283,8 +215,8 @@
                   <input placeholder="Allowed targets (comma-separated, optional)" onChange={e => setForm(f => ({...f, targets: e.target.value}))} value={form.targets} />
                   <input placeholder="Allowed selectors (0x..., optional)" onChange={e => setForm(f => ({...f, selectors: e.target.value}))} value={form.selectors} />
                   <input type="number" placeholder="Max value (ETH)" onChange={e => setForm(f => ({...f, max: e.target.value}))} value={form.max} />
-                  <input type="number" placeholder="TTL (seconds, e.g. 3600)" onChange={e => setForm(f => ({...f, ttl: e.target.value}))} value={form.ttl} />
-                  <textarea placeholder="Intent description (will be hashed)" onChange={e => setForm(f => ({...f, intent: e.target.value}))} value={form.intent}></textarea>
+                  <input type="number" placeholder="TTL (seconds)" onChange={e => setForm(f => ({...f, ttl: e.target.value}))} value={form.ttl} />
+                  <textarea placeholder="Intent description" onChange={e => setForm(f => ({...f, intent: e.target.value}))} value={form.intent}></textarea>
                   <button onClick={handleCreateRoot} disabled={pending.create}>
                     {pending.create ? 'Creating...' : 'Create Root Delegation'}
                   </button>
