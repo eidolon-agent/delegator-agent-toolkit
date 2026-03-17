@@ -3,7 +3,7 @@ src = "contracts"
 test = "test"
 out = "out"
 libs = ["lib"]
-remappings = ["@openzeppelin/=lib/openzeppelin-contracts/", "delegation-framework/=lib/delegation-framework/src/", "forge-std/=lib/forge-std/src/"]
+remappings = ["@openzeppelin/=lib/openzeppelin-contracts/", "delegation-framework/=lib/delegation-framework/src/"]
 cache_path = "cache"
 force = false
 optimizer = true
