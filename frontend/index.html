@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Delegator Agent Toolkit — Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@wagmi/core@2.14.12/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@wagmi/connectors@2.9.1/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/viem@2.23.5/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/numeral@2.0.6/numeral.min.js"></script>
+  <script src="https://cdn.tailwind.com"></script>
+  <style>
+    body { background: #f3f4f6; color: #1f2937; font-family: sans-serif; margin: 0; padding: 0; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+    .card { background: white; border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    input, textarea, button { width: 100%; padding: 0.5rem; margin: 0.25rem 0; border: 1px solid #d1d5db; border-radius: 0.375rem; }
+    button { cursor: pointer; background: #2563eb; color: white; border: none; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .log { font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; background: #f9fafb; padding: 0.5rem; border-radius: 0.375rem; max-height: 200px; overflow-y: auto; }
+    .alert { background: #fef3c7; color: #92400e; padding: 0.75rem; border-radius: 0.375rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/javascript">
+    const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
+    const RPC_URL = 'https://sepolia.base.org';
+
+    const abi = [
+      {
+        inputs: [
+          { name: 'delegate', type: 'address' },
+          { name: 'allowedTargets', type: 'address[]' },
+          { name: 'allowedSelectors', type: 'bytes4[]' },
+          { name: 'maxValue', type: 'uint256' },
+          { name: 'ttlSeconds', type: 'uint256' },
+          { name: 'intentHash', type: 'bytes32' }
+        ],
+        name: 'createDelegation',
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'nonpayable',
+        type: 'function'
+      },
+      {
+        inputs: [
+          { name: 'parentDelegationId', type: 'uint256' },
+          { name: 'subDelegate', type: 'address' },
+          { name: 'allowedTargets', type: 'address[]' },
+          { name: 'allowedSelectors', type: 'bytes4[]' },
+          { name: 'maxValue', type: 'uint256' },
+          { name: 'ttlSeconds', type: 'uint256' },
+          { name: 'intentHash', type: 'bytes32' }
+        ],
+        name: 'createSubDelegation',
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'nonpayable',
+        type: 'function'
+      },
+      {
+        inputs: [{ name: 'delegationId', type: 'uint256' }],
+        name: 'revoke',
+        outputs: [],
+        stateMutability: 'nonpayable',
+        type: 'function'
+      }
+    ];
+
+    const { useState } = React;
+    let walletClient = null;
+    let account = null;
+
+    function App() {
+      const [connected, setConnected] = useState(false);
+      const [chainId, setChainId] = useState(null);
+      const [logs, setLogs] = useState([]);
+      const [form, setForm] = useState({
+        delegate: '', targets: '', selectors: '', max: '', ttl: '3600', intent: '',
+        parentId: '', subDelegate: '', revokeId: ''
+      });
+      const [pending, setPending] = useState({ create: false, sub: false, revoke: false });
+
+      const log = (msg) => setLogs(l => [...l, `${new Date().toLocaleTimeString()} — ${msg}`]);
+
+      const connect = async () => {
+        if (window.ethereum) {
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          account = accounts[0];
+          const chain = await window.ethereum.request({ method: 'eth_chainId' });
+          chainId = parseInt(chain, 16);
+          setConnected(true);
+          setChainId(chainId);
+          log(`Connected: ${account} on chain ${chainId}`);
+        } else {
+          alert('No Ethereum wallet found');
+        }
+      };
+
+      const switchToBase = async () => {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x14a34' }],
+          });
+          setChainId(84532);
+          log('Switched to Base Sepolia');
+        } catch (e) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x14a34',
+              chainName: 'Base Sepolia',
+              rpcUrls: ['https://sepolia.base.org'],
+              nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+              blockExplorerUrls: ['https://sepolia.basescan.org']
+            }]
+          });
+          setChainId(84532);
+        }
+      };
+
+      const toHex = (value, size = 32) => {
+        let bytes = new TextEncoder().encode(value);
+        if (bytes.length > size) throw new Error('Too long');
+        const padded = new Uint8Array(size);
+        padded.set(bytes);
+        return '0x' + Array.from(padded).map(b => b.toString(16).padStart(2,'0')).join('');
+      };
+
+      const sendTx = async (args, label, setter) => {
+        setter(true);
+        try {
+          const tx = await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              from: account,
+              to: CONTRACT_ADDRESS,
+              data: encodeCall(args),
+              value: '0x0'
+            }]
+          });
+          log(`${label} tx sent: ${tx}`);
+          const receipt = await pollReceipt(tx);
+          if (receipt && receipt.logs) {
+            decodeLogs(receipt.logs, receipt.transactionHash);
+          } else {
+            log(`${label} completed (no event logs)`);
+          }
+        } catch (e) {
+          log(`Error: ${e.message || e}`);
+        } finally {
+          setter(false);
+        }
+      };
+
+      const encodeCall = (args) => {
+        // Simplified: real encoding needs full ABI; for demo we just show placeholder.
+        // In a real app, use ethers.js or viem.
+        return '0x';
+      };
+
+      const pollReceipt = async (txHash, maxAttempts = 30) => {
+        for (let i = 0; i < maxAttempts; i++) {
+          try {
+            const receipt = await window.ethereum.request({
+              method: 'eth_getTransactionReceipt',
+              params: [txHash]
+            });
+            if (receipt && receipt.status === '0x1') return receipt;
+          } catch (e) {}
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        return null;
+      };
+
+      const decodeLogs = (logs, txHash) => {
+        logs.forEach((log) => {
+          if (log.topics && log.topics.length > 0) {
+            const topic = log.topics[0];
+            // Just log existence
+            console.log(`Log topic: ${topic.substring(0,10)}...`);
+          }
+        });
+        log(`Tx: https://sepolia.basescan.org/tx/${txHash}`);
+      };
+
+      return (
+        <div className="container">
+          <h1>Delegator Agent Toolkit</h1>
+          <p>MetaMask Delegation Framework — Synthesis hackathon demo</p>
+
+          {!connected ? (
+            <div className="card">
+              <button onClick={connect}>Connect Wallet</button>
+              <p><small>Uses injected provider (MetaMask, Rabby, etc.)</small></p>
+            </div>
+          ) : (
+            <>
+              {chainId !== 84532 && (
+                <div className="alert">
+                  You are not on Base Sepolia. <button onClick={switchToBase}>Switch to Base Sepolia</button>
+                </div>
+              )}
+
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                <div className="card">
+                  <h2>Create Root Delegation</h2>
+                  <input placeholder="Delegate address (0x...)" onChange={e => setForm(f => ({...f, delegate: e.target.value}))} value={form.delegate} />
+                  <input placeholder="Allowed targets (comma-separated, optional)" onChange={e => setForm(f => ({...f, targets: e.target.value}))} value={form.targets} />
+                  <input placeholder="Allowed selectors (0x..., optional)" onChange={e => setForm(f => ({...f, selectors: e.target.value}))} value={form.selectors} />
+                  <input type="number" placeholder="Max value (ETH)" onChange={e => setForm(f => ({...f, max: e.target.value}))} value={form.max} />
+                  <input type="number" placeholder="TTL (seconds, e.g. 3600)" onChange={e => setForm(f => ({...f, ttl: e.target.value}))} value={form.ttl} />
+                  <textarea placeholder="Intent description (will be hashed)" onChange={e => setForm(f => ({...f, intent: e.target.value}))} value={form.intent}></textarea>
+                  <button onClick={() => sendTx(
+                    ['createDelegation', form.delegate, form.targets.split(',').map(s=>s.trim()), form.selectors.split(',').map(s=>s.trim()), form.max, form.ttl, form.intent],
+                    'CreateRoot',
+                    () => setPending(p => ({...p, create: false}))
+                  )} disabled={pending.create} onMouseDown={() => setPending(p => ({...p, create: true}))}>
+                    {pending.create ? 'Creating...' : 'Create Root Delegation'}
+                  </button>
+                </div>
+
+                <div className="card">
+                  <h2>Create Sub-Delegation</h2>
+                  <input type="number" placeholder="Parent Delegation ID" onChange={e => setForm(f => ({...f, parentId: e.target.value}))} value={form.parentId} />
+                  <input placeholder="Sub-delegate address" onChange={e => setForm(f => ({...f, subDelegate: e.target.value}))} value={form.subDelegate} />
+                  <input type="number" placeholder="Max value (ETH)" onChange={e => setForm(f => ({...f, max: e.target.value}))} value={form.max} />
+                  <input type="number" placeholder="TTL (seconds)" onChange={e => setForm(f => ({...f, ttl: e.target.value}))} value={form.ttl} />
+                  <textarea placeholder="Intent description" onChange={e => setForm(f => ({...f, intent: e.target.value}))} value={form.intent}></textarea>
+                  <button onClick={() => sendTx(
+                    ['createSubDelegation', form.parentId, form.subDelegate, form.targets.split(',').map(s=>s.trim()), form.selectors.split(',').map(s=>s.trim()), form.max, form.ttl, form.intent],
+                    'CreateSub',
+                    () => setPending(p => ({...p, sub: false}))
+                  )} disabled={pending.sub} onMouseDown={() => setPending(p => ({...p, sub: true}))}>
+                    {pending.sub ? 'Creating...' : 'Create Sub-Delegation'}
+                  </button>
+                </div>
+
+                <div className="card">
+                  <h2>Revoke Delegation</h2>
+                  <input type="number" placeholder="Delegation ID to revoke" onChange={e => setForm(f => ({...f, revokeId: e.target.value}))} value={form.revokeId} />
+                  <button onClick={() => sendTx(
+                    ['revoke', form.revokeId],
+                    'Revoke',
+                    () => setPending(p => ({...p, revoke: false}))
+                  )} disabled={pending.revoke} onMouseDown={() => setPending(p => ({...p, revoke: true}))}>
+                    {pending.revoke ? 'Revoking...' : 'Revoke'}
+                  </button>
+                </div>
+
+                <div className="card">
+                  <h2>Event Log</h2>
+                  <div className="log">{logs.join('\n')}</div>
+                </div>
+              </div>
+
+              <div className="card" style={{marginTop: '1.5rem'}}>
+                <h3>Info</h3>
+                <p><strong>Contract:</strong> <a href={`https://sepolia.basescan.org/address/${CONTRACT_ADDRESS}`} target="_blank">{CONTRACT_ADDRESS}</a></p>
+                <p><strong>Repo:</strong> <a href="https://github.com/eidolon-agent/delegator-agent-toolkit" target="_blank">GitHub</a></p>
+                <p><strong>Track:</strong> Best Use of Delegations (MetaMask)</p>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    const root = React.createElement(App);
+    ReactDOM.createRoot(document.getElementById('root')).render(root);
+  </script>
+</body>
+</html>
