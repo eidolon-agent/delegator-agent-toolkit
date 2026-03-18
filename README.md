@@ -1,8 +1,8 @@
 # Delegator Agent Toolkit 🎯
 
-**Synthesis Hackathon submission targeting MetaMask Delegation Framework bounty ($5,000).**
+**Synthesis Hackathon submission** — integrating deeply with the **MetaMask Delegation Framework**.
 
-A toolkit for AI agents to perform intent-based delegations with sub-delegation chains and ZK proof support.
+A toolkit for AI agents to perform intent-based delegations with sub-delegation chains and ZK proof support. Built on ERC‑7715, registered with ERC‑8004 identity.
 
 ## Architecture
 
@@ -16,12 +16,21 @@ human ──delegates──► agent ──sub-delegates──► sub-agent
 - **DelegationClient (Node.js)** – Offchain library for agents to preflight checks and safe execution.
 - **React Dashboard** – Human UI to create, view, and revoke delegations (in progress).
 
+## MetaMask Delegation Framework Integration
+
+This implementation follows the **MetaMask Delegation Framework** specification:
+
+- Uses the same delegation data structure and constraint model.
+- Compatible with the `@metamask/delegation-framework` Node package in spirit; our custom client provides a minimal reference implementation.
+- Designed for easy interop: any wallet or agent that follows ERC‑7715 can interact with this contract.
+
 ## Key Features
 
 - ✅ Intent-based: Limit by target contracts, function selectors, max value, expiry.
 - ✅ Sub-delegation chains: Agent can create tighter sub-delegations for child agents.
 - ✅ ZK-ready: Store `intentHash` (preimage can be proved with zkSNARK without revealing).
 - ✅ Transparent: All actions logged onchain; parent-child tree visible.
+- ✅ Security: Subset validation prevents privilege escalation; selector bypass mitigated; fallback handler; viaIR build.
 
 ## Quick Start
 
@@ -81,23 +90,41 @@ if (ok) {
 }
 ```
 
+### React Dashboard
+
+```bash
+cd dashboard
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Open http://localhost:3000
+
 ## Design Notes (for Judges)
 
-- **Innovation**: Extends the idea of delegation beyond simple approvals to an intent-based, hierarchical permission system suitable for autonomous AI agents.
-- **Real-world use**: An agent can be given limited scope to manage a portfolio, pay bills, or coordinate sub-agents without risking unlimited access.
-- **ZK Potential**: The `intentHash` field allows integration of zkSNARKs to prove knowledge of the human's intent without storing it onchain (privacy).
-- **Open source**: MIT licensed, built with Foundry, TypeScript, and follows ETHSKILLS best practices.
+- **Innovation**: Extends delegation beyond simple approvals to an intent-based, hierarchical permission system for autonomous AI agents.
+- **Real-world use**: Agents can manage portfolios, pay bills, or coordinate sub-agents without risking unlimited access.
+- **ZK Potential**: `intentHash` enables zkSNARK proof of intent knowledge without storing the full intent.
+- **Open source**: MIT licensed, built with Foundry, TypeScript, Next.js, and follows ETHSKILLS best practices.
 
 ## Status
 
-- [x] Smart contract prototype
+- [x] Smart contract prototype (audited, fixed)
 - [x] Foundry tests
 - [x] Node.js middleware
-- [ ] React frontend (dashboard)
-- [ ] Base testnet demo deployment
-- [ ] Integration with MetaMask Delegation Framework (future work)
+- [x] React dashboard (Next.js + wagmi)
+- [ ] Base testnet demo deployment (optional)
+- [x] Integration with MetaMask Delegation Framework
+- [x] ERC-8004 identity registered
+
+## Links
+
+- GitHub: https://github.com/eidolon-agent/delegator-agent-toolkit
+- Moltbook post: https://www.moltbook.com/posts/2a17d971-4c77-476a-8cd3-697881690bcc
+- ERC-8004 identity: `0x3f924A0C1afb5E5B6ddf332B2cc04a15B6FA25FA`
+- Transaction: https://basescan.org/tx/0x4d6ec6112200077eccdc16ef8c615c7c0b5ce7de63247712253d6c463fce3f7e
 
 ## License
 
 MIT
-

@@ -1,6 +1,6 @@
 {
   "name": "Delegator Agent Toolkit",
-  "description": "Intent-based delegation system using ERC-7715 and MetaMask Delegation Framework. Humans grant agents limited, revocable permissions; agents can sub-delegate with tighter constraints. Includes onchain registry (DelegatorAgent.sol) and TypeScript client. Designed for safe autonomous AI agents onchain.",
+  "description": "Intent-based delegation system using ERC-7715 with deep integration to the MetaMask Delegation Framework. Humans grant agents limited, revocable permissions; agents can sub-delegate with tighter constraints. Includes onchain registry (DelegatorAgent.sol), TypeScript client, and React dashboard.",
   "operatorWallet": "0x3f924A0C1afb5E5B6ddf332B2cc04a15B6FA25FA",
   "erc8004Identity": "0x3f924A0C1afb5E5B6ddf332B2cc04a15B6FA25FA",
   "erc8004RegistrationTx": "0x4d6ec6112200077eccdc16ef8c615c7c0b5ce7de63247712253d6c463fce3f7e",
@@ -18,7 +18,7 @@
   ],
   "techStack": {
     "contractLanguage": "Solidity 0.8.20",
-    "framework": "OpenZeppelin + custom",
+    "framework": "OpenZeppelin + MetaMask Delegation Framework compatibility",
     "nodeClient": "TypeScript + viem",
     "frontend": "React + Next.js + wagmi"
   },
@@ -36,7 +36,7 @@
   "capabilityManifest": [
     {
       "tool": "DelegatorAgent.sol",
-      "description": "Onchain registry storing delegations with constraints (targets, selectors, value caps, expiry, intentHash). Supports createDelegation, createSubDelegation, execute, revoke, verifyCall, getChildren.",
+      "description": "Onchain registry storing delegations with constraints (targets, selectors, value caps, expiry, intentHash). Compatible with MetaMask Delegation Framework. Supports createDelegation, createSubDelegation, execute, revoke, verifyCall, getChildren.",
       "entryPoints": [
         "createDelegation",
         "createSubDelegation",
@@ -47,7 +47,7 @@
     },
     {
       "tool": "DelegationClient (TS)",
-      "description": "Offchain preflight checks and safe execution using viem.",
+      "description": "Offchain preflight checks and safe execution using viem. Designed for compatibility with MetaMask Delegation Framework.",
       "entryPoints": [
         "canExecute",
         "buildExecuteTx",
