@@ -16,13 +16,22 @@ human ──delegates──► agent ──sub-delegates──► sub-agent
 - **DelegationClient (Node.js)** – Offchain library for agents to preflight checks and safe execution.
 - **React Dashboard** – Human UI to create, view, and revoke delegations (in progress).
 
-## MetaMask Delegation Framework Integration
+## Integration with MetaMask Delegation Framework
 
-This implementation follows the **MetaMask Delegation Framework** specification:
+This project implements the ERC‑7715 standard and is designed for seamless use with the MetaMask Delegation Framework.
 
-- Uses the same delegation data structure and constraint model.
-- Compatible with the `@metamask/delegation-framework` Node package in spirit; our custom client provides a minimal reference implementation.
-- Designed for easy interop: any wallet or agent that follows ERC‑7715 can interact with this contract.
+- **Adapter**: `integrations/metamask/MetaMaskDelegationAdapter.ts` provides a drop‑in wrapper matching MetaMask’s expected interface.
+- **Example**: `integrations/metamask/example.ts` shows how to create delegations, sub‑delegations, execute, verify, and revoke using the adapter.
+
+You can import the adapter into any MetaMask‑connected dApp:
+
+```ts
+import { MetaMaskDelegationAdapter } from '@/integrations/metamask'
+const adapter = new MetaMaskDelegationAdapter({ contractAddress, rpcUrl })
+await adapter.createDelegation(...)
+```
+
+The contract itself is compatible out of the box — it follows the same function signatures and emits standard events (`DelegationCreated`, `DelegationRevoked`, `CallExecuted`).
 
 ## Key Features
 
