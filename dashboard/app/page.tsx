@@ -1,7 +1,7 @@
 'use client'
 
 import { useAccount, useWriteContract, usePublicClient, useConnect, useDisconnect } from 'wagmi'
-import { abi } from '../lib/contract'
+import { abi } from '../lib/abi'
 import { useState, useEffect } from 'react'
 import { parseEther } from 'viem'
 
@@ -24,7 +24,7 @@ export default function Dashboard() {
         address: CONTRACT_ADDRESS,
         abi,
         functionName: 'getChildren',
-        args: [0n]
+        args: [BigInt(0)]
       }) as bigint[]
       const children = await Promise.all(d.map(async (id) => {
         const c = await publicClient.readContract({
@@ -36,7 +36,7 @@ export default function Dashboard() {
         return { id, children: c }
       }))
       const map = new Map<bigint, bigint[]>()
-      for (const { id, children } of children) map.set(id, children)
+      for (const { id, children: childIds } of children) map.set(id, childIds)
       setTree(map)
     } catch (err) {
       console.error('Failed to fetch tree:', err)
