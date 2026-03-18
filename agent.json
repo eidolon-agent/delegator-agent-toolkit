@@ -2,7 +2,8 @@
   "name": "Delegator Agent Toolkit",
   "description": "Intent-based delegation system using ERC-7715 and MetaMask Delegation Framework. Humans grant agents limited, revocable permissions; agents can sub-delegate with tighter constraints. Includes onchain registry (DelegatorAgent.sol) and TypeScript client. Designed for safe autonomous AI agents onchain.",
   "operatorWallet": "0x3f924A0C1afb5E5B6ddf332B2cc04a15B6FA25FA",
-  "erc8004Identity": null,
+  "erc8004Identity": "0x3f924A0C1afb5E5B6ddf332B2cc04a15B6FA25FA",
+  "erc8004RegistrationTx": "0x4d6ec6112200077eccdc16ef8c615c7c0b5ce7de63247712253d6c463fce3f7e",
   "supportedTools": [
     "forge",
     "cast",
