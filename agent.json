@@ -1,0 +1,81 @@
+{
+  "name": "Delegator Agent Toolkit",
+  "description": "Intent-based delegation system using ERC-7715 and MetaMask Delegation Framework. Humans grant agents limited, revocable permissions; agents can sub-delegate with tighter constraints. Includes onchain registry (DelegatorAgent.sol) and TypeScript client. Designed for safe autonomous AI agents onchain.",
+  "operatorWallet": "0x3f924A0C1afb5E5B6ddf332B2cc04a15B6FA25FA",
+  "erc8004Identity": null,
+  "supportedTools": [
+    "forge",
+    "cast",
+    "viem",
+    "wagmi",
+    "next.js",
+    "react",
+    "foundry",
+    "git",
+    "github",
+    "basescan"
+  ],
+  "techStack": {
+    "contractLanguage": "Solidity 0.8.20",
+    "framework": "OpenZeppelin + custom",
+    "nodeClient": "TypeScript + viem",
+    "frontend": "React + Next.js + wagmi"
+  },
+  "computeConstraints": {
+    "maxGasPerTx": 500000,
+    "preferredRPC": "https://sepolia.base.org"
+  },
+  "taskCategories": [
+    "delegation-creation",
+    "delegation-execution",
+    "sub-delegation",
+    "revocation",
+    "verification"
+  ],
+  "capabilityManifest": [
+    {
+      "tool": "DelegatorAgent.sol",
+      "description": "Onchain registry storing delegations with constraints (targets, selectors, value caps, expiry, intentHash). Supports createDelegation, createSubDelegation, execute, revoke, verifyCall, getChildren.",
+      "entryPoints": [
+        "createDelegation",
+        "createSubDelegation",
+        "execute",
+        "revoke",
+        "verifyCall"
+      ]
+    },
+    {
+      "tool": "DelegationClient (TS)",
+      "description": "Offchain preflight checks and safe execution using viem.",
+      "entryPoints": [
+        "canExecute",
+        "buildExecuteTx",
+        "estimateGas",
+        "resolveDelegation"
+      ]
+    }
+  ],
+  "safetyGuardrails": [
+    "All delegation constraints enforced onchain before execution",
+    "Sub-delegations cannot exceed parent's value cap or expand target/selector sets",
+    "Selector required if allowedSelectors non-empty; calldata short (less than 4 bytes) reverts",
+    "Delegation expiry checked; expired delegations are unusable",
+    "Revocation is immediate and permanent",
+    "No reentrancy risk (checks-effects-interactions followed)"
+  ],
+  "autonomyLoop": {
+    "discover": "Human creates root delegation with high-level intent (intentHash).",
+    "plan": "Agent selects appropriate targets/selectors within constraints and may issue sub-delegations for sub-agents.",
+    "execute": "Agent (or relayer) calls DelegatorAgent.execute with valid parameters; contract enforces constraints.",
+    "verify": "DelegatorAgent.verifyCall provides offchain verification; CallExecuted event records onchain outcome.",
+    "submit": "Agent logs results and emits events; human can audit via logs and blockchain explorer."
+  },
+  "links": {
+    "repo": "https://github.com/eidolon-agent/delegator-agent-toolkit",
+    "contractAddress": "0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9",
+    "deploymentTx": "0x62746847b2be808283a82bc59efaf19f04678d4f5fb6e123514ba764bbe7c02c",
+    "docs": "https://github.com/eidolon-agent/delegator-agent-toolkit#readme"
+  },
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-18T03:57:00.000Z"
+}
