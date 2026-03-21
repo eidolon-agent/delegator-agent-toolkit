@@ -1,15 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Delegator Agent Toolkit</title>
-  <meta name="description" content="Intent-based onchain delegations for AI agents using ERC-7715 and MetaMask Delegation Framework." />
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/viem@2.21.15/dist/index.umd.js"></script>
-  <script src="https://unpkg.com/@tanstack/react-query@5.51.1/build/umd/index.production.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -30,13 +24,13 @@
     }
     .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
     section { padding: 80px 0; border-bottom: 1px solid var(--border); }
-    h1 { font-size: 3rem; margin: 0 0 16px; letter-spacing: -0.02em; }
-    h2 { font-size: 2rem; margin: 0 0 16px; letter-spacing: -0.01em; }
+    h1 { font-size: 2.5rem; margin: 0 0 16px; }
+    h2 { font-size: 2rem; margin: 0 0 16px; }
     h3 { font-size: 1.25rem; margin: 0 0 8px; }
-    .lead { font-size: 1.25rem; color: var(--muted); max-width: 700px; margin-bottom: 24px; }
+    .lead { font-size: 1.125rem; color: var(--muted); max-width: 700px; margin-bottom: 24px; }
     .badge { display: inline-block; padding: 4px 12px; background: #1e3a5f; color: #93c5fd; border-radius: 999px; font-size: 0.875rem; margin-right: 8px; margin-bottom: 8px; }
     .badge.primary { background: var(--primary); color: white; }
-    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 12px 24px; border-radius: 8px; font-weight: 600; text-decoration: none; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 10px 20px; border-radius: 8px; font-weight: 600; text-decoration: none; cursor: pointer; border: none; transition: background 0.2s; }
     .btn.primary { background: var(--primary); color: white; }
     .btn.primary:hover { background: var(--primaryHover); }
     .btn.secondary { background: #1f2937; color: #e5e5e5; }
@@ -55,352 +49,247 @@
     .grid-2 > .card > form > input { grid-column: 1 / -1; }
     .tree ul { list-style: none; padding-left: 16px; margin: 4px 0; }
     .error { color: #f87171; background: #1a1a1a; padding: 12px; border-radius: 8px; margin: 12px 0; }
+    .info { color: #93c5fd; background: #1a1a1a; padding: 12px; border-radius: 8px; margin: 12px 0; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="app"></div>
 
-  <script type="text/babel" data-presets="react">
-    const { useState, useEffect } = React;
-    const { createPublicClient, http, parseEther, createWalletClient } = viem;
-    const { QueryClient, QueryClientProvider } = ReactQuery;
-
-    // Base Sepolia chain definition for viem
-    const baseSepolia = {
-      id: 84532,
-      name: 'Base Sepolia',
-      network: 'base-sepolia',
-      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-      rpcUrls: { default: { http: ['https://sepolia.base.org'] } }
-    };
-
+  <!-- Load ethers.js from CDN with fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js" crossorigin="anonymous"></script>
+  <script>
+    // Simple router to show/hide sections
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
+    const RPC_URL = 'https://sepolia.base.org';
+
+    // ABI for required functions
     const abi = [
-      {
-        inputs: [
-          { name: 'delegate', type: 'address' },
-          { name: 'allowedTargets', type: 'address[]' },
-          { name: 'allowedSelectors', type: 'bytes4[]' },
-          { name: 'maxValue', type: 'uint256' },
-          { name: 'ttlSeconds', type: 'uint256' },
-          { name: 'intentHash', type: 'bytes32' }
-        ],
-        name: 'createDelegation',
-        outputs: [{ name: 'delegationId', type: 'uint256' }],
-        stateMutability: 'nonpayable',
-        type: 'function'
-      },
-      {
-        inputs: [
-          { name: 'parentDelegationId', type: 'uint256' },
-          { name: 'subDelegate', type: 'address' },
-          { name: 'allowedTargets', type: 'address[]' },
-          { name: 'allowedSelectors', type: 'bytes4[]' },
-          { name: 'maxValue', type: 'uint256' },
-          { name: 'ttlSeconds', type: 'uint256' },
-          { name: 'intentHash', type: 'bytes32' }
-        ],
-        name: 'createSubDelegation',
-        outputs: [{ name: 'subDelegationId', type: 'uint256' }],
-        stateMutability: 'nonpayable',
-        type: 'function'
-      },
-      {
-        inputs: [
-          { name: 'delegationId', type: 'uint256' },
-          { name: 'target', type: 'address' },
-          { name: 'data', type: 'bytes' },
-          { name: 'value', type: 'uint256' }
-        ],
-        name: 'execute',
-        outputs: [{ name: 'result', type: 'bytes' }],
-        stateMutability: 'payable',
-        type: 'function'
-      },
-      {
-        inputs: [{ name: 'delegationId', type: 'uint256' }],
-        name: 'revoke',
-        outputs: [],
-        stateMutability: 'nonpayable',
-        type: 'function'
-      },
-      {
-        inputs: [{ name: 'delegationId', type: 'uint256' }],
-        name: 'getChildren',
-        outputs: [{ name: '', type: 'uint256[]' }],
-        stateMutability: 'view',
-        type: 'function'
-      }
+      'function createDelegation(address delegate, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxValue, uint256 ttlSeconds, bytes32 intentHash) returns (uint256)',
+      'function createSubDelegation(uint256 parentDelegationId, address subDelegate, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxValue, uint256 ttlSeconds, bytes32 intentHash) returns (uint256)',
+      'function execute(uint256 delegationId, address target, bytes data, uint256 value) returns (bytes)',
+      'function revoke(uint256 delegationId)',
+      'function getChildren(uint256 delegationId) returns (uint256[])'
     ];
 
-    function Dashboard() {
-      const [account, setAccount] = useState(null);
-      const [client, setClient] = useState(null);
-      const [error, setError] = useState(null);
-      const [tree, setTree] = useState({});
-      const [expanded, setExpanded] = useState({});
+    class App {
+      constructor() {
+        this.provider = null;
+        this.signers = [];
+        this.userAddress = null;
+        this.contract = null;
+      }
 
-      useEffect(() => {
-        if (window.ethereum) {
-          const publicClient = createPublicClient({
-            chain: baseSepolia,
-            transport: http()
-          });
-          setClient(publicClient);
-          // Request accounts
-          window.ethereum.request({ method: 'eth_requestAccounts' }).then((accounts) => setAccount(accounts[0])).catch((err) => setError('Failed to connect wallet: ' + err.message));
-        } else {
-          setError('No Ethereum wallet detected. Please install MetaMask or another Web3 wallet.');
+      async init() {
+        if (typeof window.ethereum === 'undefined') {
+          this.renderNoWallet();
+          return;
         }
-      }, []);
+        this.provider = new ethers.JsonRpcProvider(RPC_URL);
+        // also attach window.ethereum for signing
+        await this.connectWallet();
+      }
 
-      const refresh = async () => {
-        if (!client) return;
+      async connectWallet() {
         try {
-          const rootChildren = await client.readContract({
-            address: CONTRACT_ADDRESS,
-            abi,
-            functionName: 'getChildren',
-            args: [0n]
-          });
-          const map = {};
-          for (const id of rootChildren) {
-            const children = await client.readContract({
-              address: CONTRACT_ADDRESS,
-              abi,
-              functionName: 'getChildren',
-              args: [id]
-            });
-            map[Number(id)] = children.map(BigInt);
-          }
-          setTree(map);
-        } catch (e) { console.error(e); setError('Failed to load delegation tree: ' + e.message); }
-      };
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          this.userAddress = accounts[0];
+          this.web3Provider = new ethers.BrowserProvider(window.ethereum);
+          this.signers = await this.web3Provider.getSigners();
+          this.contract = new ethers.Contract(CONTRACT_ADDRESS, abi, this.signers[0]);
+          this.renderDashboard();
+        } catch (err) {
+          this.renderError('Wallet connection failed: ' + err.message);
+        }
+      }
 
-      useEffect(() => { if (client && account) refresh(); }, [client, account]);
-
-      const getWalletClient = async () => {
-        if (!window.ethereum) throw new Error('No wallet');
-        return createWalletClient({
-          chain: baseSepolia,
-          transport: window.ethereum
-        });
-      };
-
-      const createRoot = async (e) => {
+      async createRoot(e) {
         e.preventDefault();
         const form = e.target;
         const delegate = form.delegate.value;
         const targets = form.targets.value.split(',').filter(Boolean);
-        const selectors = form.selectors.value.split(',').filter(Boolean);
-        const maxValue = parseEther(form.maxValue.value);
+        const selectors = form.selectors.value.split(',').filter(Boolean).map(s => ethers.hexZeroPad(s, 4));
+        const maxValue = ethers.parseEther(form.maxValue.value);
         const ttl = BigInt(form.ttl.value);
-        const intent = form.intent.value ? `0x${BigInt('0x' + form.intent.value).toString(16).padStart(64, '0')}` : '0x'.padEnd(66, '0');
+        const intent = form.intent.value ? ethers.zeroPadValue(form.intent.value, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
         try {
-          const walletClient = await getWalletClient();
-          const tx = await walletClient.writeContract({
-            address: CONTRACT_ADDRESS,
-            abi,
-            functionName: 'createDelegation',
-            args: [delegate, targets, selectors, maxValue, ttl, intent]
-          });
-          alert('Tx sent: ' + tx);
-          refresh();
+          const tx = await this.contract.createDelegation(delegate, targets, selectors, maxValue, ttl, intent);
+          await tx.wait();
+          alert('Delegation created! Tx: ' + tx.hash);
+          this.refreshTree();
         } catch (err) { alert('Error: ' + err.message); }
-      };
+      }
 
-      const createSub = async (e) => {
+      async createSub(e) {
         e.preventDefault();
         const form = e.target;
         const parent = BigInt(form.parent.value);
         const delegate = form.subDelegate.value;
         const targets = form.subTargets.value.split(',').filter(Boolean);
-        const selectors = form.subSelectors.value.split(',').filter(Boolean);
-        const maxValue = parseEther(form.subMax.value);
+        const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => ethers.hexZeroPad(s, 4));
+        const maxValue = ethers.parseEther(form.subMax.value);
         const ttl = BigInt(form.subTtl.value);
-        const intent = form.subIntent.value ? `0x${BigInt('0x' + form.intent.value).toString(16).padStart(64, '0')}` : '0x'.padEnd(66, '0');
+        const intent = form.subIntent.value ? ethers.zeroPadValue(form.subIntent.value, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
         try {
-          const walletClient = await getWalletClient();
-          const tx = await walletClient.writeContract({
-            address: CONTRACT_ADDRESS,
-            abi,
-            functionName: 'createSubDelegation',
-            args: [parent, delegate, targets, selectors, maxValue, ttl, intent]
-          });
-          alert('Tx sent: ' + tx);
-          refresh();
+          const tx = await this.contract.createSubDelegation(parent, delegate, targets, selectors, maxValue, ttl, intent);
+          await tx.wait();
+          alert('Sub-delegation created! Tx: ' + tx.hash);
+          this.refreshTree();
         } catch (err) { alert('Error: ' + err.message); }
-      };
-
-      const revoke = async (id) => {
-        if (confirm('Revoke delegation #' + id + '?')) {
-          try {
-            const walletClient = await getWalletClient();
-            const tx = await walletClient.writeContract({
-              address: CONTRACT_ADDRESS,
-              abi,
-              functionName: 'revoke',
-              args: [BigInt(id)]
-            });
-            alert('Revoked: ' + tx);
-            refresh();
-          } catch (err) { alert('Error: ' + err.message); }
-        }
-      };
-
-      if (!account) {
-        return (
-          <div className="card" style={{ maxWidth: 400, margin: '0 auto' }}>
-            <h3>Connect Wallet</h3>
-            {error && <div className="error">{error}</div>}
-            <button className="btn primary" onClick={() => window.ethereum.request({ method: 'eth_requestAccounts' }).then(setAccount).catch((err) => setError('Connection failed: ' + err.message))}>
-              Connect MetaMask
-            </button>
-          </div>
-        );
       }
 
-      return (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-            <div>
-              <h3>Dashboard</h3>
-              <p style={{ color: 'var(--muted)', margin: 0 }}>Connected: {account.slice(0, 6)}...{account.slice(-4)}</p>
-            </div>
-            <button className="btn secondary" onClick={refresh}>Refresh</button>
-          </div>
+      async revoke(id) {
+        if (!confirm('Revoke delegation #' + id + '?')) return;
+        try {
+          const tx = await this.contract.revoke(BigInt(id));
+          await tx.wait();
+          alert('Revoked! Tx: ' + tx.hash);
+          this.refreshTree();
+        } catch (err) { alert('Error: ' + err.message); }
+      }
 
-          <div className="grid-2">
-            <div className="card">
-              <h3>Create Root Delegation</h3>
-              <form onSubmit={createRoot}>
-                <input name="delegate" placeholder="Delegate address" required />
-                <input name="targets" placeholder="Allowed targets (comma separated)" />
-                <input name="selectors" placeholder="Allowed selectors (bytes4 hex, comma)" />
-                <input name="maxValue" placeholder="Max value (ETH)" required />
-                <input name="ttl" placeholder="TTL (seconds)" required />
-                <input name="intent" placeholder="Intent hash (hex, optional)" />
-                <button className="btn primary" type="submit">Create</button>
-              </form>
-            </div>
+      async refreshTree() {
+        if (!this.contract) return;
+        try {
+          const rootChildren = await this.contract.getChildren(0n);
+          const map = {};
+          for (const id of rootChildren) {
+            const children = await this.contract.getChildren(id);
+            map[Number(id)] = children.map(BigInt);
+          }
+          this.tree = map;
+          this.renderDashboard();
+        } catch (err) {
+          this.renderError('Failed to load tree: ' + err.message);
+        }
+      }
 
-            <div className="card">
-              <h3>Create Sub-Delegation</h3>
-              <form onSubmit={createSub}>
-                <input name="parent" placeholder="Parent delegation ID" required />
-                <input name="subDelegate" placeholder="Sub-delegate address" required />
-                <input name="subTargets" placeholder="Allowed targets" />
-                <input name="subSelectors" placeholder="Allowed selectors" />
-                <input name="subMax" placeholder="Max value (ETH)" required />
-                <input name="subTtl" placeholder="TTL (seconds)" required />
-                <input name="subIntent" placeholder="Intent hash" />
-                <button className="btn primary" type="submit">Create Sub</button>
-              </form>
+      renderNoWallet() {
+        document.getElementById('app').innerHTML = `
+          <div class="container" style="padding: 40px 0;">
+            <div class="card" style="max-width:400px;margin:0 auto;">
+              <h3>Connect Wallet</h3>
+              <div class="error">No Ethereum wallet detected. Please install MetaMask or another Web3 wallet.</div>
+              <a href="https://metamask.io/" target="_blank" class="btn primary">Install MetaMask</a>
             </div>
           </div>
+        `;
+      }
 
-          <div className="card">
-            <h3>Delegation Tree</h3>
-            {Object.keys(tree).length === 0 ? <p style={{ color: 'var(--muted)' }}>No delegations found.</p> : (
-              <ul>
-                {Object.entries(tree).map(([id, children]) => (
-                  <li key={id}>
-                    <button onClick={() => setExpanded(e => ({ ...e, [id]: !e[id] }))} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0 }}>
-                      {expanded[id] ? '▼' : '▶'} Delegation {id} (children: {children.length})
-                    </button>
-                    {expanded[id] && (
-                      <ul>
-                        {children.map(cid => (
-                          <li key={cid} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span>Delegation {cid}</span>
-                            <button className="btn secondary" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => revoke(cid)}>Revoke</button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
+      renderError(msg) {
+        document.getElementById('app').innerHTML = `<div class="container"><div class="error">${msg}</div></div>`;
+      }
+
+      renderDashboard() {
+        const account = this.userAddress || 'Not connected';
+        const treeHtml = Object.keys(this.tree).length === 0
+          ? '<p style="color:var(--muted)">No delegations found.</p>'
+          : '<ul>' + Object.entries(this.tree).map(([id, children]) => `
+              <li>
+                <button onclick="app.toggleExpand(${id})" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;">
+                  ${this.expanded[id] ? '▼' : '▶'} Delegation ${id} (children: ${children.length})
+                </button>
+                ${this.expanded[id] ? '<ul>' + children.map(cid => `
+                    <li style="display:flex;align-items:center;gap:8px;">
+                      <span>Delegation ${cid}</span>
+                      <button class="btn secondary" style="padding:4px 8px;font-size:12px;" onclick="app.revoke(${cid})">Revoke</button>
+                    </li>
+                  `).join('') + '</ul>' : ''}
+              </li>
+            `).join('') + '</ul>';
+
+        document.getElementById('app').innerHTML = `
+          <div>
+            <header style="padding:20px 0;border-bottom:1px solid var(--border);">
+              <div class="container" style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <h1 style="font-size:1.5rem;margin:0;">Delegator Agent Toolkit</h1>
+                  <p style="color:var(--muted);margin:0;">ERC-7715 + MetaMask Delegation Framework</p>
+                </div>
+                <nav>
+                  <button class="btn secondary" onclick="app.refreshTree()">Refresh</button>
+                </nav>
+              </div>
+            </header>
+
+            <section class="container">
+              <span class="badge primary">MetaMask Delegation Framework</span>
+              <span class="badge">ERC-7715</span>
+              <span class="badge">ERC-8004</span>
+              <h1>Safe, intent-based onchain<br/>delegations for AI agents.</h1>
+              <p class="lead">
+                Instead of unlimited approvals, humans grant limited, revocable permissions
+                with constraints: targets, selectors, value caps, expiry, and an intent hash.
+                Agents can safely act and further sub-delegate.
+              </p>
+              <div style="display:flex;gap:12px;">
+                <a href="#dashboard" class="btn primary">Try Dashboard</a>
+                <a href="https://github.com/eidolon-agent/delegator-agent-toolkit" target="_blank" class="btn secondary">GitHub</a>
+              </div>
+            </section>
+
+            <section class="container" id="dashboard">
+              <h2>Live Dashboard</h2>
+              <p class="lead">Connected: ${account.slice(0,6)}...${account.slice(-4)}</p>
+
+              <div class="grid-2">
+                <div class="card">
+                  <h3>Create Root Delegation</h3>
+                  <form onsubmit="app.createRoot(event)">
+                    <input name="delegate" placeholder="Delegate address" required />
+                    <input name="targets" placeholder="Allowed targets (comma separated)" />
+                    <input name="selectors" placeholder="Allowed selectors (bytes4 hex, comma)" />
+                    <input name="maxValue" placeholder="Max value (ETH)" required />
+                    <input name="ttl" placeholder="TTL (seconds)" required />
+                    <input name="intent" placeholder="Intent hash (hex, optional)" />
+                    <button class="btn primary" type="submit">Create</button>
+                  </form>
+                </div>
+
+                <div class="card">
+                  <h3>Create Sub-Delegation</h3>
+                  <form onsubmit="app.createSub(event)">
+                    <input name="parent" placeholder="Parent delegation ID" required />
+                    <input name="subDelegate" placeholder="Sub-delegate address" required />
+                    <input name="subTargets" placeholder="Allowed targets" />
+                    <input name="subSelectors" placeholder="Allowed selectors" />
+                    <input name="subMax" placeholder="Max value (ETH)" required />
+                    <input name="subTtl" placeholder="TTL (seconds)" required />
+                    <input name="subIntent" placeholder="Intent hash" />
+                    <button class="btn primary" type="submit">Create Sub</button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>Delegation Tree</h3>
+                ${treeHtml}
+              </div>
+            </section>
+
+            <footer>
+              <div class="container">
+                <p>Built by <a href="https://github.com/eidolon-agent" target="_blank">Eidolon</a> for <a href="https://synthesis.devfolio.co" target="_blank">The Synthesis</a> hackathon.</p>
+                <div class="links" style="justify-content:center;">
+                  <a href="https://github.com/eidolon-agent/delegator-agent-toolkit" target="_blank">GitHub</a>
+                  <a href="https://www.moltbook.com/posts/2a17d971-4c77-476a-8cd3-697881690bcc" target="_blank">Moltbook</a>
+                  <a href="https://basescan.org/address/${CONTRACT_ADDRESS}" target="_blank">Contract (Sepolia)</a>
+                </div>
+                <p style="margin-top:24px;opacity:0.6;">MIT License</p>
+              </div>
+            </footer>
           </div>
-        </div>
-      );
+        `;
+      }
+
+      toggleExpand(id) {
+        this.expanded = !this.expanded ? { [id]: true } : { [id]: !this.expanded[id] };
+        this.renderDashboard();
+      }
     }
 
-    function Footer() {
-      return (
-        <footer>
-          <div className="container">
-            <p>Built by <a href="https://github.com/eidolon-agent" target="_blank" rel="noopener">Eidolon</a> for <a href="https://synthesis.devfolio.co" target="_blank" rel="noopener">The Synthesis</a> hackathon.</p>
-            <div className="links" style={{ justifyContent: 'center' }}>
-              <a href="https://github.com/eidolon-agent/delegator-agent-toolkit" target="_blank" rel="noopener">GitHub</a>
-              <a href="https://www.moltbook.com/posts/2a17d971-4c77-476a-8cd3-697881690bcc" target="_blank" rel="noopener">Moltbook</a>
-              <a href="https://basescan.org/address/0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9" target="_blank" rel="noopener">Contract (Sepolia)</a>
-            </div>
-            <p style={{ marginTop: 24, opacity: 0.6 }}>MIT License</p>
-          </div>
-        </footer>
-      );
-    }
-
-    function Header() {
-      return (
-        <header style={{ padding: '20px 0', border-bottom: '1px solid var(--border)' }}>
-          <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h1 style={{ fontSize: '1.5rem', margin: 0 }}>Delegator Agent Toolkit</h1>
-              <p style={{ color: 'var(--muted)', margin: 0 }}>ERC-7715 + MetaMask Delegation Framework</p>
-            </div>
-            <nav>
-              <a className="btn secondary" href="#dashboard">Open Dashboard</a>
-            </nav>
-          </div>
-        </header>
-      );
-    }
-
-    function HomePage() {
-      return (
-        <div>
-          <Header />
-          <section className="container">
-            <span className="badge primary">MetaMask Delegation Framework</span>
-            <span className="badge">ERC-7715</span>
-            <span className="badge">ERC-8004</span>
-            <h1>Safe, intent-based onchain<br/>delegations for AI agents.</h1>
-            <p className="lead">
-              Instead of unlimited approvals, humans grant limited, revocable permissions
-              with constraints: targets, selectors, value caps, expiry, and an intent hash.
-              Agents can safely act and further sub-delegate.
-            </p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <a className="btn primary" href="#dashboard">Try Dashboard</a>
-              <a className="btn secondary" href="https://github.com/eidolon-agent/delegator-agent-toolkit" target="_blank" rel="noopener">GitHub</a>
-            </div>
-          </section>
-
-          <section className="container" id="dashboard">
-            <h2>Live Dashboard</h2>
-            <p className="lead">Connect your wallet to manage delegations on Base Sepolia.</p>
-            <QueryClientProvider client={new QueryClient()}>
-              <Dashboard />
-            </QueryClientProvider>
-          </section>
-
-          <Footer />
-        </div>
-      );
-    }
-
-    // Error boundary for debugging
-    window.onerror = function(msg, url, line, col, error) {
-      console.error('Global error:', msg, 'at', url + ':' + line + ':' + col, error);
-      document.body.innerHTML = '<div style="color:#f87171;padding:20px;background:#111;"><h3>Something went wrong</h3><pre>' + msg + '\n' + (error && error.stack) + '</pre></div>';
-      return false;
-    };
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<HomePage />);
+    const app = new App();
+    window.app = app; // for onclick handlers
+    app.init();
   </script>
 </body>
 </html>
