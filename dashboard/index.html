@@ -237,7 +237,18 @@
               <h2>Live Dashboard</h2>
               <p class="lead">Connected: ${account.slice(0,6)}...${account.slice(-4)}</p>
 
-              <div class="grid-2">
+              <div class="grid-2" style="grid-template-columns: 1fr 1fr 1fr;">
+                <div class="card">
+                  <h3>Simple Delegate</h3>
+                  <p style="font-size:0.875rem;color:var(--muted);margin-bottom:12px;">One‑click safe delegation with defaults.</p>
+                  <form onsubmit="app.createSimple(event)">
+                    <input name="delegate" placeholder="Agent address" required />
+                    <input name="maxValue" placeholder="Max value (ETH)" value="0.01" required />
+                    <input name="ttl" placeholder="TTL (seconds)" value="604800" required />
+                    <button class="btn primary" type="submit">Create Simple</button>
+                  </form>
+                </div>
+
                 <div class="card">
                   <h3>Create Root Delegation</h3>
                   <form onsubmit="app.createRoot(event)">
@@ -321,7 +332,31 @@
         const selectors = form.selectors.value.split(',').filter(Boolean).map(s => hexPad(s, 4));
         const maxValue = parseEther(form.maxValue.value);
         const ttl = BigInt(form.ttl.value);
-        const intent = form.intent.value.trim() || '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const intentRaw = form.intent.value.trim();
+        const intent = intentRaw ? intentRaw : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        try {
+          const tx = await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              to: CONTRACT_ADDRESS,
+              data: encodeFunction('createDelegation', ['address', 'address[]', 'bytes4[]', 'uint256', 'uint256', 'bytes32'], [delegate, targets, selectors, maxValue, ttl, intent])
+            }]
+          });
+          alert('Tx sent: ' + tx);
+          await this.refreshTree();
+        } catch (err) { alert('Error: ' + err.message); }
+      }
+
+      async createSimple(e) {
+        e.preventDefault();
+        const form = e.target;
+        const delegate = form.delegate.value;
+        const maxValue = parseEther(form.maxValue.value);
+        const ttl = BigInt(form.ttl.value);
+        // Safe defaults: no targets/selectors restrictions; zero intent
+        const targets = [];
+        const selectors = [];
+        const intent = '0x0000000000000000000000000000000000000000000000000000000000000000';
         try {
           const tx = await window.ethereum.request({
             method: 'eth_sendTransaction',
@@ -344,7 +379,8 @@
         const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => hexPad(s, 4));
         const maxValue = parseEther(form.subMax.value);
         const ttl = BigInt(form.subTtl.value);
-        const intent = form.subIntent.value.trim() || '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const intentRaw = form.subIntent.value.trim();
+        const intent = intentRaw ? intentRaw : '0x0000000000000000000000000000000000000000000000000000000000000000';
         try {
           const tx = await window.ethereum.request({
             method: 'eth_sendTransaction',
@@ -353,7 +389,7 @@
               data: encodeFunction('createSubDelegation', ['uint256', 'address', 'address[]', 'bytes4[]', 'uint256', 'uint256', 'bytes32'], [parent, delegate, targets, selectors, maxValue, ttl, intent])
             }]
           });
-          alert('Tx sent: ' + tx);
+          alert('Sub-delegation created! Tx: ' + tx);
           await this.refreshTree();
         } catch (err) { alert('Error: ' + err.message); }
       }
