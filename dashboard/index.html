@@ -55,7 +55,7 @@
 <body>
   <div id="app"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/ethers@6.7.0/dist/ethers.umd.min.js" crossorigin="anonymous"></script>
   <script>
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
     const RPC_URL = 'https://sepolia.base.org';
@@ -181,21 +181,7 @@
 
       renderDashboard() {
         const account = this.userAddress || 'Not connected';
-        const treeHtml = Object.keys(this.tree).length === 0
-          ? '<p style="color:var(--muted)">No delegations found.</p>'
-          : '<ul>' + Object.entries(this.tree).map(([id, children]) => `
-              <li>
-                <button onclick="app.toggleExpand(${id})" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;">
-                  ${this.expanded[id] ? '▼' : '▶'} Delegation ${id} (children: ${children.length})
-                </button>
-                ${this.expanded[id] ? '<ul>' + children.map(cid => `
-                    <li style="display:flex;align-items:center;gap:8px;">
-                      <span>Delegation ${cid}</span>
-                      <button class="btn secondary" style="padding:4px 8px;font-size:12px;" onclick="app.revoke(${cid})">Revoke</button>
-                    </li>
-                  `).join('') + '</ul>' : ''}
-              </li>
-            `).join('') + '</ul>';
+        const treeHtml = this.treeHtml();
 
         document.getElementById('app').innerHTML = `
           <div>
@@ -262,7 +248,7 @@
 
               <div class="card">
                 <h3>Delegation Tree</h3>
-                ${this.treeHtml()}
+                ${treeHtml}
               </div>
             </section>
 
@@ -281,11 +267,6 @@
         `;
       }
 
-      toggleExpand(id) {
-        this.expanded[id] = !this.expanded[id];
-        this.renderDashboard();
-      }
-
       treeHtml() {
         if (Object.keys(this.tree).length === 0) return '<p style="color:var(--muted)">No delegations found.</p>';
         return '<ul>' + Object.entries(this.tree).map(([id, children]) => `
@@ -301,6 +282,11 @@
               `).join('') + '</ul>' : ''}
           </li>
         `).join('') + '</ul>';
+      }
+
+      toggleExpand(id) {
+        this.expanded[id] = !this.expanded[id];
+        this.renderDashboard();
       }
     }
 
