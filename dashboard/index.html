@@ -90,7 +90,7 @@
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
           this.userAddress = accounts[0];
           this.provider = new ethers.BrowserProvider(window.ethereum);
-          this.signers = await ethers.getSigners(this.provider);
+          this.signers = await this.provider.getSigners();
           const signer = this.signers[0];
           this.contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
           await this.refreshTree();
@@ -262,7 +262,7 @@
 
               <div class="card">
                 <h3>Delegation Tree</h3>
-                ${treeHtml}
+                ${this.treeHtml()}
               </div>
             </section>
 
@@ -284,6 +284,23 @@
       toggleExpand(id) {
         this.expanded[id] = !this.expanded[id];
         this.renderDashboard();
+      }
+
+      treeHtml() {
+        if (Object.keys(this.tree).length === 0) return '<p style="color:var(--muted)">No delegations found.</p>';
+        return '<ul>' + Object.entries(this.tree).map(([id, children]) => `
+          <li>
+            <button onclick="app.toggleExpand(${id})" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;">
+              ${this.expanded[id] ? '▼' : '▶'} Delegation ${id} (children: ${children.length})
+            </button>
+            ${this.expanded[id] ? '<ul>' + children.map(cid => `
+                <li style="display:flex;align-items:center;gap:8px;">
+                  <span>Delegation ${cid}</span>
+                  <button class="btn secondary" style="padding:4px 8px;font-size:12px;" onclick="app.revoke(${cid})">Revoke</button>
+                </li>
+              `).join('') + '</ul>' : ''}
+          </li>
+        `).join('') + '</ul>';
       }
     }
 
