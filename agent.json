@@ -75,7 +75,8 @@
     "repo": "https://github.com/eidolon-agent/delegator-agent-toolkit",
     "contractAddress": "0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9",
     "deploymentTx": "0x62746847b2be808283a82bc59efaf19f04678d4f5fb6e123514ba764bbe7c02c",
-    "docs": "https://github.com/eidolon-agent/delegator-agent-toolkit#readme"
+    "docs": "https://github.com/eidolon-agent/delegator-agent-toolkit#readme",
+    "deployedURL": "https://delegator-agent-toolkit-upkm.vercel.app"
   },
   "version": "1.0.0",
   "lastUpdated": "2026-03-18T03:57:00.000Z"
