@@ -55,14 +55,10 @@
 <body>
   <div id="app"></div>
 
-  <!-- Load ethers.js from CDN with fallback -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js" crossorigin="anonymous"></script>
   <script>
-    // Simple router to show/hide sections
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
     const RPC_URL = 'https://sepolia.base.org';
-
-    // ABI for required functions
     const abi = [
       'function createDelegation(address delegate, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxValue, uint256 ttlSeconds, bytes32 intentHash) returns (uint256)',
       'function createSubDelegation(uint256 parentDelegationId, address subDelegate, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxValue, uint256 ttlSeconds, bytes32 intentHash) returns (uint256)',
@@ -77,6 +73,8 @@
         this.signers = [];
         this.userAddress = null;
         this.contract = null;
+        this.tree = {};
+        this.expanded = {};
       }
 
       async init() {
@@ -84,8 +82,6 @@
           this.renderNoWallet();
           return;
         }
-        this.provider = new ethers.JsonRpcProvider(RPC_URL);
-        // also attach window.ethereum for signing
         await this.connectWallet();
       }
 
@@ -93,9 +89,11 @@
         try {
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
           this.userAddress = accounts[0];
-          this.web3Provider = new ethers.BrowserProvider(window.ethereum);
-          this.signers = await this.web3Provider.getSigners();
-          this.contract = new ethers.Contract(CONTRACT_ADDRESS, abi, this.signers[0]);
+          this.provider = new ethers.BrowserProvider(window.ethereum);
+          this.signers = await ethers.getSigners(this.provider);
+          const signer = this.signers[0];
+          this.contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
+          await this.refreshTree();
           this.renderDashboard();
         } catch (err) {
           this.renderError('Wallet connection failed: ' + err.message);
@@ -110,12 +108,13 @@
         const selectors = form.selectors.value.split(',').filter(Boolean).map(s => ethers.hexZeroPad(s, 4));
         const maxValue = ethers.parseEther(form.maxValue.value);
         const ttl = BigInt(form.ttl.value);
-        const intent = form.intent.value ? ethers.zeroPadValue(form.intent.value, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const intentRaw = form.intent.value.trim();
+        const intent = intentRaw ? ethers.zeroPadValue(intentRaw, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
         try {
           const tx = await this.contract.createDelegation(delegate, targets, selectors, maxValue, ttl, intent);
           await tx.wait();
           alert('Delegation created! Tx: ' + tx.hash);
-          this.refreshTree();
+          await this.refreshTree();
         } catch (err) { alert('Error: ' + err.message); }
       }
 
@@ -128,12 +127,13 @@
         const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => ethers.hexZeroPad(s, 4));
         const maxValue = ethers.parseEther(form.subMax.value);
         const ttl = BigInt(form.subTtl.value);
-        const intent = form.subIntent.value ? ethers.zeroPadValue(form.subIntent.value, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const intentRaw = form.subIntent.value.trim();
+        const intent = intentRaw ? ethers.zeroPadValue(intentRaw, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
         try {
           const tx = await this.contract.createSubDelegation(parent, delegate, targets, selectors, maxValue, ttl, intent);
           await tx.wait();
           alert('Sub-delegation created! Tx: ' + tx.hash);
-          this.refreshTree();
+          await this.refreshTree();
         } catch (err) { alert('Error: ' + err.message); }
       }
 
@@ -143,7 +143,7 @@
           const tx = await this.contract.revoke(BigInt(id));
           await tx.wait();
           alert('Revoked! Tx: ' + tx.hash);
-          this.refreshTree();
+          await this.refreshTree();
         } catch (err) { alert('Error: ' + err.message); }
       }
 
@@ -282,13 +282,13 @@
       }
 
       toggleExpand(id) {
-        this.expanded = !this.expanded ? { [id]: true } : { [id]: !this.expanded[id] };
+        this.expanded[id] = !this.expanded[id];
         this.renderDashboard();
       }
     }
 
     const app = new App();
-    window.app = app; // for onclick handlers
+    window.app = app;
     app.init();
   </script>
 </body>
