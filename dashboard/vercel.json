@@ -1,6 +1,12 @@
 {
+  "framework": null,
+  "builds": [
+    {
+      "src": "static.html",
+      "use": "@vercel/static"
+    }
+  ],
   "routes": [
-    { "handle": "filesystem" },
     { "src": "/.*", "dest": "/static.html" }
   ],
   "env": {
