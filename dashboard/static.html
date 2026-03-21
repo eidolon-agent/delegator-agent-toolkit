@@ -7,7 +7,7 @@
   <meta name="description" content="Intent-based onchain delegations for AI agents using ERC-7715 and MetaMask Delegation Framework." />
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@wagmi/core@2.13.8/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/wagmi@3.5.0/dist/index.umd.js"></script>
   <script src="https://unpkg.com/viem@2.21.15/dist/index.umd.js"></script>
   <script src="https://unpkg.com/@tanstack/react-query@5.51.1/build/umd/index.production.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -129,7 +129,6 @@
       color: var(--muted);
       font-size: 0.875rem;
     }
-    /* Dashboard specific */
     #dashboard { margin-top: 40px; }
     input, button {
       padding: 10px;
@@ -148,6 +147,7 @@
     .grid-2 > .card > form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .grid-2 > .card > form > input { grid-column: 1 / -1; }
     .tree ul { list-style: none; padding-left: 16px; margin: 4px 0; }
+    .error { color: #f87171; background: #1a1a1a; padding: 12px; border-radius: 8px; margin: 12px 0; }
   </style>
 </head>
 <body>
@@ -221,18 +221,21 @@
     function Dashboard() {
       const [account, setAccount] = useState(null);
       const [client, setClient] = useState(null);
+      const [error, setError] = useState(null);
       const [tree, setTree] = useState({});
       const [expanded, setExpanded] = useState({});
 
       useEffect(() => {
         if (window.ethereum) {
           const provider = new viem.WebSocketProvider(window.ethereum);
-          provider.request({ method: 'eth_requestAccounts' }).then((accounts) => setAccount(accounts[0])).catch(console.error);
+          provider.request({ method: 'eth_requestAccounts' }).then((accounts) => setAccount(accounts[0])).catch((err) => setError('Failed to connect wallet: ' + err.message));
           const client = createPublicClient({
             chain: baseSepolia,
             transport: http()
           });
           setClient(client);
+        } else {
+          setError('No Ethereum wallet detected. Please install MetaMask or another Web3 wallet.');
         }
       }, []);
 
@@ -256,7 +259,7 @@
             map[Number(id)] = children.map(BigInt);
           }
           setTree(map);
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error(e); setError('Failed to load delegation tree: ' + e.message); }
       };
 
       useEffect(() => { if (client && account) refresh(); }, [client, account]);
@@ -323,7 +326,8 @@
         return (
           <div className="card" style={{ maxWidth: 400, margin: '0 auto' }}>
             <h3>Connect Wallet</h3>
-            <button className="btn primary" onClick={() => window.ethereum.request({ method: 'eth_requestAccounts' }).then(setAccount)}>
+            {error && <div className="error">{error}</div>}
+            <button className="btn primary" onClick={() => window.ethereum.request({ method: 'eth_requestAccounts' }).then(setAccount).catch((err) => setError('Connection failed: ' + err.message))}>
               Connect MetaMask
             </button>
           </div>
@@ -437,7 +441,7 @@
             <span className="badge primary">MetaMask Delegation Framework</span>
             <span className="badge">ERC-7715</span>
             <span className="badge">ERC-8004</span>
-            <h1>Safe, intent-based onchain<br />delegations for AI agents.</h1>
+            <h1>Safe, intent-based onchain<br/>delegations for AI agents.</h1>
             <p className="lead">
               Instead of unlimited approvals, humans grant limited, revocable permissions
               with constraints: targets, selectors, value caps, expiry, and an intent hash.
