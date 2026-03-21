@@ -171,6 +171,14 @@
         }
       }
 
+      disconnect() {
+        this.account = null;
+        this.tree = {};
+        this.expanded = {};
+        this.wrongNetwork = false;
+        this.renderNoWallet();
+      }
+
       async switchNetwork() {
         try {
           await window.ethereum.request({
@@ -234,6 +242,7 @@
                 </div>
                 <nav>
                   <button class="btn secondary" onclick="app.refreshTree()">Refresh</button>
+                  ${this.account ? `<button class="btn secondary" onclick="app.disconnect()">Disconnect</button>` : ''}
                 </nav>
               </div>
             </header>
