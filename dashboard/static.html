@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delegator Agent Dashboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@wagmi/core@2.13.8/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/viem@2.21.15/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@tanstack/react-query@5.51.1/build/umd/index.production.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui, sans-serif; padding: 20px; }
+    input, button { padding: 8px; margin: 4px; border-radius: 4px; border: 1px solid #333; background: #1a1a1a; color: #e5e5e5; }
+    button { cursor: pointer; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+    .card { border: 1px solid #333; padding: 16px; border-radius: 8px; background: #111; }
+    .tree { margin-top: 20px; }
+    .error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { createPublicClient, http, parseEther } = viem;
+    const { baseSepolia, base } = wagmi.chains;
+    const { QueryClient, QueryClientProvider, useQuery } = ReactQuery;
+
+    const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
+    const abi = [
+      {
+        "inputs": [
+          { "name": "delegate", "type": "address" },
+          { "name": "allowedTargets", "type": "address[]" },
+          { "name": "allowedSelectors", "type": "bytes4[]" },
+          { "name": "maxValue", "type": "uint256" },
+          { "name": "ttlSeconds", "type": "uint256" },
+          { "name": "intentHash", "type": "bytes32" }
+        ],
+        "name": "createDelegation",
+        "outputs": [{ "name": "delegationId", "type": "uint256" }],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          { "name": "parentDelegationId", "type": "uint256" },
+          { "name": "subDelegate", "type": "address" },
+          { "name": "allowedTargets", "type": "address[]" },
+          { "name": "allowedSelectors", "type": "bytes4[]" },
+          { "name": "maxValue", "type": "uint256" },
+          { "name": "ttlSeconds", "type": "uint256" },
+          { "name": "intentHash", "type": "bytes32" }
+        ],
+        "name": "createSubDelegation",
+        "outputs": [{ "name": "subDelegationId", "type": "uint256" }],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          { "name": "delegationId", "type": "uint256" },
+          { "name": "target", "type": "address" },
+          { "name": "data", "type": "bytes" },
+          { "name": "value", "type": "uint256" }
+        ],
+        "name": "execute",
+        "outputs": [{ "name": "result", "type": "bytes" }],
+        "stateMutability": "payable",
+        "type": "function"
+      },
+      {
+        "inputs": [{ "name": "delegationId", "type": "uint256" }],
+        "name": "revoke",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [{ "name": "delegationId", "type": "uint256" }],
+        "name": "getChildren",
+        "outputs": [{ "name": "", "type": "uint256[]" }],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ];
+
+    function App() {
+      const [account, setAccount] = useState(null);
+      const [client, setClient] = useState(null);
+      const [tree, setTree] = useState({});
+      const [expanded, setExpanded] = useState({});
+
+      useEffect(() => {
+        if (window.ethereum) {
+          const provider = new viem.WebSocketProvider(window.ethereum);
+          provider.request({ method: 'eth_requestAccounts' }).then((accounts) => setAccount(accounts[0])).catch(console.error);
+          const client = createPublicClient({
+            chain: baseSepolia,
+            transport: http()
+          });
+          setClient(client);
+        }
+      }, []);
+
+      const refresh = async () => {
+        if (!client) return;
+        try {
+          const rootChildren = await client.readContract({
+            address: CONTRACT_ADDRESS,
+            abi,
+            functionName: 'getChildren',
+            args: [0n]
+          });
+          const map = {};
+          for (const id of rootChildren) {
+            const children = await client.readContract({
+              address: CONTRACT_ADDRESS,
+              abi,
+              functionName: 'getChildren',
+              args: [id]
+            });
+            map[Number(id)] = children.map(BigInt);
+          }
+          setTree(map);
+        } catch (e) { console.error(e); }
+      };
+
+      useEffect(() => { if (client && account) refresh(); }, [client, account]);
+
+      const createRoot = async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const delegate = form.delegate.value;
+        const targets = form.targets.value.split(',').filter(Boolean);
+        const selectors = form.selectors.value.split(',').filter(Boolean);
+        const maxValue = parseEther(form.maxValue.value);
+        const ttl = BigInt(form.ttl.value);
+        const intent = form.intent.value ? `0x${BigInt('0x' + form.intent.value).toString(16).padStart(64, '0')}` : '0x'.padEnd(66, '0');
+
+        try {
+          const tx = await client.writeContract({
+            address: CONTRACT_ADDRESS,
+            abi,
+            functionName: 'createDelegation',
+            args: [delegate, targets, selectors, maxValue, ttl, intent]
+          });
+          alert('Tx sent: ' + tx);
+          refresh();
+        } catch (err) { alert('Error: ' + err.message); }
+      };
+
+      const createSub = async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const parent = BigInt(form.parent.value);
+        const delegate = form.subDelegate.value;
+        const targets = form.subTargets.value.split(',').filter(Boolean);
+        const selectors = form.subSelectors.value.split(',').filter(Boolean);
+        const maxValue = parseEther(form.subMax.value);
+        const ttl = BigInt(form.subTtl.value);
+        const intent = form.subIntent.value ? `0x${BigInt('0x' + form.subIntent.value).toString(16).padStart(64, '0')}` : '0x'.padEnd(66, '0');
+
+        try {
+          const tx = await client.writeContract({
+            address: CONTRACT_ADDRESS,
+            abi,
+            functionName: 'createSubDelegation',
+            args: [parent, delegate, targets, selectors, maxValue, ttl, intent]
+          });
+          alert('Tx sent: ' + tx);
+          refresh();
+        } catch (err) { alert('Error: ' + err.message); }
+      };
+
+      if (!account) {
+        return (
+          <div className="card">
+            <h2>Connect Wallet</h2>
+            <button onClick={() => window.ethereum.request({ method: 'eth_requestAccounts' }).then(setAccount)}>
+              Connect MetaMask
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <h1>Delegator Agent Dashboard</h1>
+          <p>Connected: {account}</p>
+          <button onClick={refresh}>Refresh Tree</button>
+
+          <div className="grid">
+            <div className="card">
+              <h3>Create Root Delegation</h3>
+              <form onSubmit={createRoot}>
+                <input name="delegate" placeholder="Delegate address" required />
+                <input name="targets" placeholder="Allowed targets (comma separated)" />
+                <input name="selectors" placeholder="Allowed selectors (bytes4 hex, comma)" />
+                <input name="maxValue" placeholder="Max value (ETH)" required />
+                <input name="ttl" placeholder="TTL (seconds)" required />
+                <input name="intent" placeholder="Intent hash (hex, optional)" />
+                <button type="submit">Create</button>
+              </form>
+            </div>
+
+            <div className="card">
+              <h3>Create Sub-Delegation</h3>
+              <form onSubmit={createSub}>
+                <input name="parent" placeholder="Parent delegation ID" required />
+                <input name="subDelegate" placeholder="Sub-delegate address" required />
+                <input name="subTargets" placeholder="Allowed targets" />
+                <input name="subSelectors" placeholder="Allowed selectors" />
+                <input name="subMax" placeholder="Max value (ETH)" required />
+                <input name="subTtl" placeholder="TTL (seconds)" required />
+                <input name="subIntent" placeholder="Intent hash" />
+                <button type="submit">Create Sub</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>Delegation Tree</h3>
+            {Object.keys(tree).length === 0 ? <p>No delegations</p> : (
+              <ul>
+                {Object.entries(tree).map(([id, children]) => (
+                  <li key={id}>
+                    <button onClick={() => setExpanded(e => ({...e, [id]: !e[id]}))}>
+                      {expanded[id] ? '▼' : '▶'} Delegation {id} (children: {children.length})
+                    </button>
+                    {expanded[id] && <ul>{children.map(cid => <li key={cid}>Delegation {cid}</li>)}</ul>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const queryClient = new QueryClient();
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    );
+  </script>
+</body>
+</html>

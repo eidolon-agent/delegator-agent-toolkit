@@ -1,7 +1,8 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/.*", "dest": "/static.html" }
+  ],
   "env": {
     "NEXT_PUBLIC_CONTRACT_ADDRESS": "0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9"
   }
