@@ -1,15 +1,5 @@
 {
-  "framework": null,
-  "builds": [
-    {
-      "src": "static.html",
-      "use": "@vercel/static"
-    }
-  ],
   "routes": [
-    { "src": "/.*", "dest": "/static.html" }
-  ],
-  "env": {
-    "NEXT_PUBLIC_CONTRACT_ADDRESS": "0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9"
-  }
+    { "src": "/.*", "dest": "/index.html" }
+  ]
 }
