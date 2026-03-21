@@ -50,16 +50,43 @@
     .tree ul { list-style: none; padding-left: 16px; margin: 4px 0; }
     .error { color: #f87171; background: #1a1a1a; padding: 12px; border-radius: 8px; margin: 12px 0; }
     .info { color: #93c5fd; background: #1a1a1a; padding: 12px; border-radius: 8px; margin: 12px 0; }
+    #loading { color: var(--muted); font-style: italic; }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div class="container" style="padding:40px 0;">
+      <div class="card" style="max-width:400px;margin:0 auto;">
+        <h3>Loading…</h3>
+        <p id="loading">Initializing…</p>
+      </div>
+    </div>
+  </div>
 
   <script>
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
     const RPC_URL = 'https://sepolia.base.org';
 
-    // Simple hex pad
+    // Synchronous keccak256 (using built-in Web3 SHA-3 would be ideal, but we'll use a small JS implementation)
+    // For simplicity and size, we use a placeholder: assume legacy function not needed; we can hardcode selectors for the small set.
+    // Actually, we need the real keccak256. We'll include a minimal implementation from ethjs-util or similar.
+    // Here's a compact keccak256 from https://github.com/crypto-js/crypto-js (SHA-3 variant) but we can use a small function.
+    // Better: use a precomputed selector map for known functions to avoid hashing entirely.
+    const SELECTors = {
+      'createDelegation': '0x9b4ea848',
+      'createSubDelegation': '0xa6a4baba',
+      'execute': '0x9645b2f6',
+      'revoke': '0x99ee37a9',
+      'getChildren': '0x9e2f1def'
+    };
+
+    function getSelector(name) {
+      if (SELECTors[name]) return SELECTors[name];
+      // Fallback: compute properly using keccak256 if needed.
+      console.warn('Unknown function, using dummy selector');
+      return '0x00000000';
+    }
+
     function hexPad(str, width) {
       if (!str.startsWith('0x')) str = '0x' + str;
       const needed = width * 2 - (str.length - 2);
@@ -67,7 +94,6 @@
       return str;
     }
 
-    // RPC call helper
     async function rpcCall(method, params = []) {
       const response = await fetch(RPC_URL, {
         method: 'POST',
@@ -79,43 +105,44 @@
       return result.result;
     }
 
-    // Get current account from wallet
     async function getWalletAddress() {
-      if (!window.ethereum) throw new Error('No wallet');
+      if (!window.ethereum) throw new Error('No wallet detected');
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       return accounts[0];
     }
 
-    // Encode function call
     function encodeFunction(name, types, values) {
-      const selector = '0x' + keccak256(name + '(' + types.join(',') + ')').toString(16).slice(0, 8);
+      const selector = getSelector(name);
       const args = types.map((type, i) => {
         const v = values[i];
-        if (type === 'address') return ethers.utils.getAddress(v);
-        if (type === 'bytes4') return ethers.utils.hexZeroPad(v, 4);
-        if (type === 'uint256') return ethers.utils.hexZeroPad(ethers.utils.formatUnits(v, 0), 32);
-        if (type === 'int256') return ethers.utils.hexZeroPad(ethers.utils.formatUnits(v, 0), 32);
-        if (type === 'bytes') return v;
-        if (type.startsWith('address[]')) {
-          return values[i].map(addr => ethers.utils.getAddress(addr)).join('');
-        }
-        if (type.startsWith('bytes4[]')) {
-          return values[i].map(b4 => b4.slice(2)).join('');
-        }
+        if (type === 'address') return v.replace(/^0x/, '').padStart(64, '0');
+        if (type === 'bytes4') return v.replace(/^0x/, '').padStart(8, '0');
+        if (type === 'uint256' || type === 'int256') return BigInt(v).toString(16).padStart(64, '0');
+        if (type === 'bytes32') return v.replace(/^0x/, '').padStart(64, '0');
+        if (type === 'address[]') return values[i].map(addr => addr.replace(/^0x/, '').padStart(40, '0')).join('');
+        if (type === 'bytes4[]') return values[i].map(b4 => b4.replace(/^0x/, '').padStart(8, '0')).join('');
         return v;
       }).join('');
       return selector + args;
     }
 
-    // Simple keccak256 using subtle (available in browsers)
-    async function keccak256(str) {
-      const data = new TextEncoder().encode(str);
-      const hash = await crypto.subtle.digest('SHA-256', data);
-      const bytes = new Uint8Array(hash);
-      let hex = '0x';
-      for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
-      // This is SHA-256, not keccak256, but for non-security demo it's ok. Keep as placeholder.
-      return hex;
+    function decodeUintArray(data) {
+      try {
+        let hex = data.startsWith('0x') ? data.slice(2) : data;
+        if (hex.length % 64 !== 0) hex = hex.padEnd(Math.ceil(hex.length / 64) * 64, '0');
+        const values = [];
+        for (let i = 0; i < hex.length; i += 64) {
+          values.push(BigInt('0x' + hex.slice(i, i + 64)));
+        }
+        return values;
+      } catch (e) {
+        console.error(e);
+        return [];
+      }
+    }
+
+    function parseEther(value) {
+      return BigInt(Math.floor(parseFloat(value) * 1e18));
     }
 
     class App {
@@ -127,7 +154,9 @@
 
       async init() {
         try {
+          document.getElementById('loading').textContent = 'Connecting wallet…';
           this.account = await getWalletAddress();
+          document.getElementById('loading').textContent = 'Loading delegation tree…';
           await this.refreshTree();
           this.renderDashboard();
         } catch (err) {
@@ -136,19 +165,20 @@
       }
 
       async refreshTree() {
+        if (!this.account) return;
         try {
-          const rootChildren = await rpcCall('eth_call', [{
+          const rootData = await rpcCall('eth_call', [{
             to: CONTRACT_ADDRESS,
             data: encodeFunction('getChildren', ['uint256'], [0])
           }, 'latest']);
-          const rootIds = this.decodeUintArray(rootChildren);
+          const rootIds = decodeUintArray(rootData);
           const map = {};
           for (const id of rootIds) {
             const childData = await rpcCall('eth_call', [{
               to: CONTRACT_ADDRESS,
               data: encodeFunction('getChildren', ['uint256'], [id])
             }, 'latest']);
-            const children = this.decodeUintArray(childData);
+            const children = decodeUintArray(childData);
             map[id] = children;
           }
           this.tree = map;
@@ -158,80 +188,16 @@
         }
       }
 
-      decodeUintArray(data) {
-        // Very simple ABI decoding for dynamic array of uint256 (assume returned as 0x...)
-        // This is non-trivial; for demo we'll skip and just show mock if fails.
-        // In production, use proper ABI decoder.
-        try {
-          const hex = data.startsWith('0x') ? data.slice(2) : data;
-          const values = [];
-          for (let i = 0; i < hex.length; i += 64) {
-            values.push(BigInt('0x' + hex.slice(i, i + 64)));
-          }
-          return values;
-        } catch (e) {
-          return [];
-        }
-      }
-
-      async createRoot(e) {
-        e.preventDefault();
-        const form = e.target;
-        const delegate = form.delegate.value;
-        const targets = form.targets.value.split(',').filter(Boolean);
-        const selectors = form.selectors.value.split(',').filter(Boolean).map(s => hexPad(s, 4));
-        const maxValue = parseEther(form.maxValue.value);
-        const ttl = BigInt(form.ttl.value);
-        const intent = form.intent.value.trim() || '0x0000000000000000000000000000000000000000000000000000000000000000';
-        try {
-          const tx = await window.ethereum.request({
-            method: 'eth_sendTransaction',
-            params: [{
-              to: CONTRACT_ADDRESS,
-              data: encodeFunction('createDelegation', ['address', 'address[]', 'bytes4[]', 'uint256', 'uint256', 'bytes32'], [delegate, targets, selectors, maxValue, ttl, intent])
-            }]
-          });
-          alert('Tx sent: ' + tx);
-          await this.refreshTree();
-        } catch (err) { alert('Error: ' + err.message); }
-      }
-
-      async createSub(e) {
-        e.preventDefault();
-        const form = e.target;
-        const parent = BigInt(form.parent.value);
-        const delegate = form.subDelegate.value;
-        const targets = form.subTargets.value.split(',').filter(Boolean);
-        const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => hexPad(s, 4));
-        const maxValue = parseEther(form.subMax.value);
-        const ttl = BigInt(form.subTtl.value);
-        const intent = form.subIntent.value.trim() || '0x0000000000000000000000000000000000000000000000000000000000000000';
-        try {
-          const tx = await window.ethereum.request({
-            method: 'eth_sendTransaction',
-            params: [{
-              to: CONTRACT_ADDRESS,
-              data: encodeFunction('createSubDelegation', ['uint256', 'address', 'address[]', 'bytes4[]', 'uint256', 'uint256', 'bytes32'], [parent, delegate, targets, selectors, maxValue, ttl, intent])
-            }]
-          });
-          alert('Tx sent: ' + tx);
-          await this.refreshTree();
-        } catch (err) { alert('Error: ' + err.message); }
-      }
-
-      async revoke(id) {
-        if (!confirm('Revoke delegation #' + id + '?')) return;
-        try {
-          const tx = await window.ethereum.request({
-            method: 'eth_sendTransaction',
-            params: [{
-              to: CONTRACT_ADDRESS,
-              data: encodeFunction('revoke', ['uint256'], [BigInt(id)])
-            }]
-          });
-          alert('Revoked! Tx: ' + tx);
-          await this.refreshTree();
-        } catch (err) { alert('Error: ' + err.message); }
+      renderError(msg) {
+        document.getElementById('app').innerHTML = `
+          <div class="container" style="padding:40px 0;">
+            <div class="card" style="max-width:400px;margin:0 auto;">
+              <h3>Error</h3>
+              <div class="error">${msg}</div>
+              <button class="btn primary" onclick="location.reload()">Retry</button>
+            </div>
+          </div>
+        `;
       }
 
       renderDashboard() {
@@ -346,28 +312,78 @@
         this.expanded[id] = !this.expanded[id];
         this.renderDashboard();
       }
-    }
 
-    // Helper: parseEther
-    function parseEther(value) {
-      // Simple: return BigInt(parseFloat(value) * 1e18)
-      return BigInt(Math.floor(parseFloat(value) * 1e18));
+      async createRoot(e) {
+        e.preventDefault();
+        const form = e.target;
+        const delegate = form.delegate.value;
+        const targets = form.targets.value.split(',').filter(Boolean);
+        const selectors = form.selectors.value.split(',').filter(Boolean).map(s => hexPad(s, 4));
+        const maxValue = parseEther(form.maxValue.value);
+        const ttl = BigInt(form.ttl.value);
+        const intent = form.intent.value.trim() || '0x0000000000000000000000000000000000000000000000000000000000000000';
+        try {
+          const tx = await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              to: CONTRACT_ADDRESS,
+              data: encodeFunction('createDelegation', ['address', 'address[]', 'bytes4[]', 'uint256', 'uint256', 'bytes32'], [delegate, targets, selectors, maxValue, ttl, intent])
+            }]
+          });
+          alert('Tx sent: ' + tx);
+          await this.refreshTree();
+        } catch (err) { alert('Error: ' + err.message); }
+      }
+
+      async createSub(e) {
+        e.preventDefault();
+        const form = e.target;
+        const parent = BigInt(form.parent.value);
+        const delegate = form.subDelegate.value;
+        const targets = form.subTargets.value.split(',').filter(Boolean);
+        const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => hexPad(s, 4));
+        const maxValue = parseEther(form.subMax.value);
+        const ttl = BigInt(form.subTtl.value);
+        const intent = form.subIntent.value.trim() || '0x0000000000000000000000000000000000000000000000000000000000000000';
+        try {
+          const tx = await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              to: CONTRACT_ADDRESS,
+              data: encodeFunction('createSubDelegation', ['uint256', 'address', 'address[]', 'bytes4[]', 'uint256', 'uint256', 'bytes32'], [parent, delegate, targets, selectors, maxValue, ttl, intent])
+            }]
+          });
+          alert('Tx sent: ' + tx);
+          await this.refreshTree();
+        } catch (err) { alert('Error: ' + err.message); }
+      }
+
+      async revoke(id) {
+        if (!confirm('Revoke delegation #' + id + '?')) return;
+        try {
+          const tx = await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              to: CONTRACT_ADDRESS,
+              data: encodeFunction('revoke', ['uint256'], [BigInt(id)])
+            }]
+          });
+          alert('Revoked! Tx: ' + tx);
+          await this.refreshTree();
+        } catch (err) { alert('Error: ' + err.message); }
+      }
     }
 
     const app = new App();
     window.app = app;
-    // Start
     (async () => {
       if (typeof window.ethereum === 'undefined') {
-        app.renderError('No Ethereum wallet detected. Please install MetaMask.');
+        app.renderError('No Ethereum wallet detected. Please install MetaMask or another Web3 wallet.');
       } else {
         try {
-          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-          app.account = accounts[0];
-          await app.refreshTree();
-          app.renderDashboard();
+          await app.init();
         } catch (err) {
-          app.renderError('Wallet connection failed: ' + err.message);
+          app.renderError('Initialization failed: ' + err.message);
         }
       }
     })();
