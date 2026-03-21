@@ -55,11 +55,10 @@
 <body>
   <div id="app"></div>
 
-  <script src="https://unpkg.com/ethers@6.7.0/dist/ethers.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" crossorigin="anonymous"></script>
   <script>
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
-    const RPC_URL = 'https://sepolia.base.org';
-    const abi = [
+    const CONTRACT_ABI = [
       'function createDelegation(address delegate, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxValue, uint256 ttlSeconds, bytes32 intentHash) returns (uint256)',
       'function createSubDelegation(uint256 parentDelegationId, address subDelegate, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxValue, uint256 ttlSeconds, bytes32 intentHash) returns (uint256)',
       'function execute(uint256 delegationId, address target, bytes data, uint256 value) returns (bytes)',
@@ -89,10 +88,11 @@
         try {
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
           this.userAddress = accounts[0];
-          this.provider = new ethers.BrowserProvider(window.ethereum);
-          this.signers = await this.provider.getSigners();
-          const signer = this.signers[0];
-          this.contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
+          // v5 style provider
+          this.provider = new ethers.providers.Web3Provider(window.ethereum);
+          this.signers = await this.provider.listAccounts(); // returns an array
+          const signer = this.provider.getSigner();
+          this.contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           await this.refreshTree();
           this.renderDashboard();
         } catch (err) {
@@ -105,11 +105,15 @@
         const form = e.target;
         const delegate = form.delegate.value;
         const targets = form.targets.value.split(',').filter(Boolean);
-        const selectors = form.selectors.value.split(',').filter(Boolean).map(s => ethers.hexZeroPad(s, 4));
-        const maxValue = ethers.parseEther(form.maxValue.value);
+        const selectors = form.selectors.value.split(',').filter(Boolean).map(s => ethers.utils.hexZeroPad(s, 4));
+        const maxValue = ethers.utils.parseEther(form.maxValue.value);
         const ttl = BigInt(form.ttl.value);
         const intentRaw = form.intent.value.trim();
-        const intent = intentRaw ? ethers.zeroPadValue(intentRaw, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        let intent = '0x0000000000000000000000000000000000000000000000000000000000000000';
+        if (intentRaw) {
+          if (!intentRaw.startsWith('0x')) intentRaw = '0x' + intentRaw;
+          intent = ethers.utils.zeroPadValue(intentRaw, 32);
+        }
         try {
           const tx = await this.contract.createDelegation(delegate, targets, selectors, maxValue, ttl, intent);
           await tx.wait();
@@ -124,11 +128,15 @@
         const parent = BigInt(form.parent.value);
         const delegate = form.subDelegate.value;
         const targets = form.subTargets.value.split(',').filter(Boolean);
-        const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => ethers.hexZeroPad(s, 4));
-        const maxValue = ethers.parseEther(form.subMax.value);
+        const selectors = form.subSelectors.value.split(',').filter(Boolean).map(s => ethers.utils.hexZeroPad(s, 4));
+        const maxValue = ethers.utils.parseEther(form.subMax.value);
         const ttl = BigInt(form.subTtl.value);
         const intentRaw = form.subIntent.value.trim();
-        const intent = intentRaw ? ethers.zeroPadValue(intentRaw, 32) : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        let intent = '0x0000000000000000000000000000000000000000000000000000000000000000';
+        if (intentRaw) {
+          if (!intentRaw.startsWith('0x')) intentRaw = '0x' + intentRaw;
+          intent = ethers.utils.zeroPadValue(intentRaw, 32);
+        }
         try {
           const tx = await this.contract.createSubDelegation(parent, delegate, targets, selectors, maxValue, ttl, intent);
           await tx.wait();
@@ -150,7 +158,7 @@
       async refreshTree() {
         if (!this.contract) return;
         try {
-          const rootChildren = await this.contract.getChildren(0n);
+          const rootChildren = await this.contract.getChildren(0);
           const map = {};
           for (const id of rootChildren) {
             const children = await this.contract.getChildren(id);
