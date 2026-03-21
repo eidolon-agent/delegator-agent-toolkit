@@ -66,6 +66,7 @@
   <script>
     const CONTRACT_ADDRESS = '0x3ba2e2a5f75b935fe51ec1bde24748a4a3f3bdc9';
     const RPC_URL = 'https://sepolia.base.org';
+    const BASE_SEPOLIA_CHAIN_ID = '0x14efa'; // 84532
 
     // Synchronous keccak256 (using built-in Web3 SHA-3 would be ideal, but we'll use a small JS implementation)
     // For simplicity and size, we use a placeholder: assume legacy function not needed; we can hardcode selectors for the small set.
@@ -156,11 +157,31 @@
         try {
           document.getElementById('loading').textContent = 'Connecting wallet…';
           this.account = await getWalletAddress();
-          document.getElementById('loading').textContent = 'Loading delegation tree…';
-          await this.refreshTree();
+          // Check network
+          const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+          this.currentChainId = chainId;
+          this.wrongNetwork = (chainId !== BASE_SEPOLIA_CHAIN_ID);
+          document.getElementById('loading').textContent = this.wrongNetwork ? 'Wrong network' : 'Loading delegation tree…';
+          if (!this.wrongNetwork) {
+            await this.refreshTree();
+          }
           this.renderDashboard();
         } catch (err) {
           this.renderError(err.message);
+        }
+      }
+
+      async switchNetwork() {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }]
+          });
+          this.wrongNetwork = false;
+          await this.refreshTree();
+          this.renderDashboard();
+        } catch (err) {
+          this.renderError('Switch failed: ' + err.message);
         }
       }
 
@@ -216,6 +237,16 @@
                 </nav>
               </div>
             </header>
+
+            ${this.wrongNetwork ? `
+            <div class="container" style="padding:20px 0;">
+              <div class="card" style="border-color:#f87171;">
+                <h3 style="color:#f87171;">Wrong Network</h3>
+                <p>This dashboard works on <strong>Base Sepolia</strong>. You are connected to chain ID <code>${this.currentChainId || 'unknown'}</code>. Please switch networks to interact with the contract.</p>
+                <button class="btn primary" onclick="app.switchNetwork()">Switch to Base Sepolia</button>
+              </div>
+            </div>
+            ` : ''}
 
             <section class="container">
               <span class="badge primary">MetaMask Delegation Framework</span>
